@@ -1,0 +1,15 @@
+* sine.cir -- FOUR (bounded-harmonic Fourier) coverage, fixed-dt/uniform-sampling baseline.
+*
+* SIG is an exact SPICE SIN() source, amplitude 2, frequency 5 Hz, no offset; measured over
+* exactly one period (--tfinal 0.2). By hand: v(t) = 2*sin(2*pi*5*t) = 2*cos(2*pi*5*t - 90deg),
+* so the fundamental (h1) magnitude is 2.0 and its phase is -90 degrees; every other harmonic
+* (h2..h4) and the DC term must be ~0 (a pure sinusoid has no harmonic content), and thd_percent
+* must be ~0%. See test_sine.py for the exact tolerances (small, but not machine-epsilon --
+* PWL-sampling a smooth sine at a finite dt is only an approximation, per this crate's own
+* documented technique).
+SIG kind=sinwave v0=0 va=2 freq=5
+VSIG a 0 SIGV
+SIGV kind=sig2phys domain=voltage in=SIG
+R1 a 0 1000
+
+MEAS_FOUR kind=measure type=four out=V(a) fundamental=5 harmonics=5

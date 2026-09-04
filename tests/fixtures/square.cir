@@ -1,0 +1,13 @@
+* square.cir -- cycle-counting kind=measure coverage: freq, on_time, off_time.
+*
+* SQ is a SPICE PULSE()-style 0/1 square wave, period 1s, 50% duty, with negligible (1us)
+* rise/fall time compared to the 0.5s half-period -- so, by hand: FREQ = 1.0 Hz, ON_TIME =
+* OFF_TIME = 0.5s per cycle (the 1us edges are within any reasonable tolerance of exactly 0.5).
+SQ kind=pulsewave v1=0 v2=1 td=0 tr=1e-6 tf=1e-6 pw=0.5 per=1.0
+VSQ a 0 SQV
+SQV kind=sig2phys domain=voltage in=SQ
+R1 a 0 1000
+
+MEAS_FREQ kind=measure type=freq out=V(a) on=0.5 off=0.5
+MEAS_ONTIME kind=measure type=on_time out=V(a) on=0.5 off=0.5
+MEAS_OFFTIME kind=measure type=off_time out=V(a) on=0.5 off=0.5

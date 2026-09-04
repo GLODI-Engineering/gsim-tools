@@ -1,0 +1,16 @@
+* two_tone.cir -- FOUR/THD coverage on a signal with known, deliberately-added harmonic content.
+*
+* v(t) = sin(2*pi*10*t) + 0.1*sin(2*pi*20*t): a 10 Hz fundamental of amplitude 1 plus an exact
+* second harmonic of amplitude 0.1 (10% of the fundamental) added on top, so, by hand:
+* THD = 100% * sqrt(sum of every harmonic above the fundamental, squared) / fundamental
+*     = 100% * 0.1 / 1 = 10% exactly.
+* h1_mag should be ~1.0, h2_mag ~0.1, h3_mag (and DC) ~0 -- there is no third harmonic in this
+* signal at all.
+SIG1 kind=sinwave v0=0 va=1 freq=10
+SIG2 kind=sinwave v0=0 va=0.1 freq=20
+TOTAL kind=sum inputs=SIG1,SIG2 signs=1,1
+VTOT a 0 TOTALV
+TOTALV kind=sig2phys domain=voltage in=TOTAL
+R1 a 0 1000
+
+MEAS_FOUR kind=measure type=four out=V(a) fundamental=10 harmonics=4

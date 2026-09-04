@@ -1,0 +1,29 @@
+* err.cir -- err1/err2/error(l1/l2/infnorm) coverage.
+*
+* RAMP(t)=2t, REF(t)=t: RAMP is always exactly twice REF for t>0, so every err1/err2 term
+* (M-C)/max(minval,|M|) = (2t-t)/2t = 0.5 exactly; err2 (the mean) = 0.5, err1 (the RMS of the
+* same terms) = sqrt(mean(0.5^2)) = 0.5 too -- by hand, matching gs-waveform-measurements' own
+* err1_err2_hand_computed test (measured always exactly double comparison => both metrics 0.5).
+*
+* MEASURED_OFFSET(t) = REF(t) + 3 = t+3: a constant +3 offset from REF at every instant, so
+* error_norm's L1 (mean |diff|), L2 (RMS diff), and InfNorm (max |diff|) all equal exactly 3 --
+* a constant-offset difference makes all three norms coincide, by hand.
+RAMP kind=pwl points=[[0,0],[10,20]]
+REF kind=pwl points=[[0,0],[10,10]]
+CONST3 kind=const value=3
+MEASURED_OFFSET kind=sum inputs=REF,CONST3 signs=1,1
+VA a 0 RAMPV
+RAMPV kind=sig2phys domain=voltage in=RAMP
+R1 a 0 1000
+VB b 0 REFV
+REFV kind=sig2phys domain=voltage in=REF
+R2 b 0 1000
+VC c 0 OFFV
+OFFV kind=sig2phys domain=voltage in=MEASURED_OFFSET
+R3 c 0 1000
+
+MEAS_ERR1 kind=measure type=err1 out=V(a) ref=V(b)
+MEAS_ERR2 kind=measure type=err2 out=V(a) ref=V(b)
+MEAS_L1 kind=measure type=error out=V(c) ref=V(b) norm=l1
+MEAS_L2 kind=measure type=error out=V(c) ref=V(b) norm=l2
+MEAS_INF kind=measure type=error out=V(c) ref=V(b) norm=infnorm

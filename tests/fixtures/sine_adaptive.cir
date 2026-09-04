@@ -1,0 +1,24 @@
+* sine_adaptive.cir -- FOUR on a genuinely NON-UNIFORM-timestep trace. This is the entire reason
+* `gs-waveform-measurements` exists (see its own crate-level doc comment): a naive measurement
+* implementation that assumes uniform spacing gets subtly wrong answers on a real variable-step
+* solver's own output.
+*
+* Same SIG source as sine.cir (amplitude 2, 5 Hz, exact SPICE SIN()) -- but this run is invoked
+* with NO --dt at all (see test_sine_adaptive.py), so `dae-runtime`'s adaptive step-size control
+* picks the actual sample times, not a fixed grid. The RC branch below (VRC/R1/C1) exists only
+* to give the adaptive integrator a real capacitor-charging transient to react to -- with no
+* dynamic state at all in the circuit, the adaptive controller would have no local-truncation-
+* error signal to shrink/grow the step against and would likely just take uniform dt_max steps
+* throughout, defeating the point of this fixture; R1*C1 = 1ms is short compared to the 0.2s
+* window, so the early fast RC transient forces genuinely small steps early on and much larger
+* ones once it settles. `MEAS_FOUR` reads `out=SIG` directly -- SIG's own block output at each
+* solved step, not routed through the RC branch at all -- so its value at every sample is still
+* exactly the analytic SPICE SIN() formula, keeping the same hand-derived expectation as
+* sine.cir (fundamental magnitude 2.0, phase -90deg, ~0 THD) while proving it holds on real
+* non-uniform spacing, not merely on a convenient fixed grid.
+SIG kind=sinwave v0=0 va=2 freq=5
+VRC rc_in 0 5
+R1 rc_in rc_out 1000
+C1 rc_out 0 1e-6
+
+MEAS_FOUR kind=measure type=four out=SIG fundamental=5 harmonics=5

@@ -1,0 +1,45 @@
+* ramp.cir -- scalar/crossing kind=measure coverage: max, min, max_at, min_at, pp, avg, rms,
+* integ, deriv (at= and when= forms), find (at= and when= forms), when, trig_targ.
+*
+* RAMP(t) = 2t and OTHER(t) = 100 + 10t are exact PWL sources over t in [0,10] (kind=pwl with
+* just the two endpoints), sourced onto nodes a/b through ideal V sources -- so V(a)=RAMP(t) and
+* V(b)=OTHER(t) exactly at every simulated instant, not merely at the declared breakpoints,
+* making every measurement below hand-derivable in closed form:
+*   max=20 (t=10), min=0 (t=0), max_at=10, min_at=0
+*   pp = max-min = 20
+*   avg = (1/10) integral_0^10 2t dt = 100/10 = 10
+*   rms = sqrt((1/10) integral_0^10 (2t)^2 dt) = sqrt(400/3) = 11.5470053838...
+*   integ = integral_0^10 2t dt = 100
+*   deriv at t=5 = 2 (the ramp's own constant slope)
+*   find at t=5 = 2*5 = 10
+*   when V(a)=10 (rise) => t=5 (2t=10)
+*   find V(b) when V(a)=10 => V(b) at t=5 = 100+10*5 = 150
+*   deriv V(a) when V(a)=10 => slope at t=5 = 2
+*   trig_targ: trig at t=1 (fixed), targ = first rising crossing of V(a)=15 (t=7.5) => dt=6.5
+*
+* Caveat verified against the real CLI: the resolved trace's first row is t=dt (the first
+* *completed* step), not t=0 -- there is no t=0 row -- so `min`/`min_at` come back as
+* `RAMP(dt)`/`dt` rather than exactly 0; test_ramp.py's tolerance accounts for this.
+RAMP kind=pwl points=[[0,0],[10,20]]
+OTHER kind=pwl points=[[0,100],[10,200]]
+VRAMP a 0 RAMPV
+RAMPV kind=sig2phys domain=voltage in=RAMP
+R1 a 0 1000
+VOTHER b 0 OTHERV
+OTHERV kind=sig2phys domain=voltage in=OTHER
+R2 b 0 1000
+
+MEAS_MAX kind=measure type=max out=V(a)
+MEAS_MIN kind=measure type=min out=V(a)
+MEAS_MAXAT kind=measure type=max_at out=V(a)
+MEAS_MINAT kind=measure type=min_at out=V(a)
+MEAS_PP kind=measure type=pp out=V(a)
+MEAS_AVG kind=measure type=avg out=V(a)
+MEAS_RMS kind=measure type=rms out=V(a)
+MEAS_INTEG kind=measure type=integ out=V(a)
+MEAS_DERIVAT kind=measure type=deriv out=V(a) at=5
+MEAS_FINDAT kind=measure type=find out=V(a) at=5
+MEAS_WHEN kind=measure type=when out=V(a) when_val=10 rise=1
+MEAS_FINDWHEN kind=measure type=find out=V(b) when=V(a) when_val=10 rise=1
+MEAS_DERIVWHEN kind=measure type=deriv out=V(a) when=V(a) when_val=10 rise=1
+MEAS_TRIGTARG kind=measure type=trig_targ trig_at=1 targ_var=V(a) targ_val=15 targ_rise=1
