@@ -528,6 +528,19 @@ def test_layered_layout_tolerates_a_pure_cycle_without_hanging():
 
 
 @requires_gsim_py
+def test_set_positions_applies_a_nudged_layout():
+    """The compute-nudge-apply workflow: layout, move one block, put it back."""
+    sch, feedback = _signal_chain()
+    pos = sch.layered_layout(skip_wires=[feedback.id], apply=False)
+    pos["monitor"] = (pos["monitor"][0], 999)
+    sch.set_positions({"monitor": pos["monitor"], "UNKNOWN": (5, 5)})  # unknown id ignored
+
+    by_id = {b["id"]: tuple(b["position"]) for b in sch.model["blocks"]}
+    assert by_id["monitor"] == pos["monitor"]
+    assert by_id["src"] == (0, 0)  # untouched blocks keep what they had
+
+
+@requires_gsim_py
 def test_place_without_overlap_steps_around_an_occupied_spot():
     sch = S.Schematic("place", grid=10)
     sch.add("control.gain", id="a", at=(0, 0), k=1.0)

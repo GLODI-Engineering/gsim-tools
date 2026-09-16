@@ -970,6 +970,17 @@ class Schematic:
             for b in json.loads(self._model)["blocks"]
         ]
 
+    def set_positions(self, positions: "dict[str, tuple[int, int]]") -> "Schematic":
+        """Move the named blocks to ``{block id: (x, y)}``. Returns ``self``.
+
+        The other half of the compute-nudge-apply workflow: take what
+        :meth:`layered_layout` returns (with ``apply=False``), adjust the few blocks whose
+        visual grouping the layerer cannot know, and put the result back. Blocks not named
+        keep their positions; an id the model does not have is ignored.
+        """
+        self._apply_positions(positions)
+        return self
+
     def _apply_positions(self, positions: "dict[str, tuple[int, int]]") -> None:
         """Write ``positions`` into the held model; blocks not mentioned keep theirs."""
         model = json.loads(self._model)
