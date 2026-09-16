@@ -520,6 +520,76 @@ def test_layered_layout_accepts_an_explicit_edge_list_and_per_block_sizes():
     assert pos["src"][0] == pos["sum"][0] == pos["pi"][0] == pos["monitor"][0]
 
 
+def _mixed_paradigm_sheet():
+    """A power stage plus the control chain around it -- the normal power-electronics shape.
+
+    ``src -> gain -> converter -> switch`` is the control chain; the switch, the source, the
+    resistor and the ground are a *physical network*, joined conductively with no signal
+    direction at all and with the ground node joined to two of them.
+    """
+    sch = S.Schematic("mixed", "Mixed", grid=10)
+    gnd = sch.add("routing.ground", id="gnd")
+    vdc = sch.add("source.voltage.dc", id="Vdc", V=10.0)
+    sw = sch.add(
+        "passive.switch.ideal", id="SW", r_on=0.1, g_breakdown=0.0, v_breakdown=-100.0,
+        g_off=1e-9, v_th=0.5, g_on=5.0,
+    )
+    rload = sch.add("passive.resistor", id="R", R=10.0)
+    e = "physical-electrical"
+    sch.connect(vdc.p, sw.d, e)
+    sch.connect(sw.s, rload.p1, e)
+    sch.connect(rload.p2, gnd.p, e)
+    sch.connect(vdc.n, gnd.p, e)
+
+    ref = sch.add("source.const", id="ref", value=0.5)
+    duty = sch.add("control.gain", id="duty", k=1.0)
+    gate = sch.add("converter.sig2phys", id="gate", params={"domain": "voltage"})
+    sch.connect(ref.out, duty["in"])
+    sch.connect(duty.out, gate["in"])
+    sch.connect(gate.out, sw.g, e)  # the paradigm boundary
+    return sch
+
+
+@requires_gsim_py
+def test_layered_layout_without_blocks_drags_the_power_stage_into_the_first_column():
+    """Why ``blocks`` exists: every block takes part, so untouched ones pile into layer 0."""
+    sch = _mixed_paradigm_sheet()
+    pos = sch.layered_layout(apply=False)
+
+    assert set(pos) == {"gnd", "Vdc", "SW", "R", "ref", "duty", "gate"}
+    first_column = {b for b, (x, _) in pos.items() if x == min(x for x, _ in pos.values())}
+    # The control chain's own head shares its column with three power-stage blocks.
+    assert {"ref", "Vdc"} <= first_column
+
+
+@requires_gsim_py
+def test_layered_layout_over_a_subset_leaves_every_other_block_alone():
+    sch = _mixed_paradigm_sheet()
+    power = {"gnd", "Vdc", "SW", "R"}
+    before = {b["id"]: tuple(b["position"]) for b in sch.model["blocks"]}
+    sch.set_positions({b: (500, 500) for b in power})
+
+    control = ["ref", "duty", "gate"]
+    pos = sch.layered_layout({"ref": (40, 40)}, blocks=control, apply=True)
+
+    # Only the named blocks come back, and only they moved.
+    assert set(pos) == set(control)
+    assert pos["ref"][0] < pos["duty"][0] < pos["gate"][0]
+    after = {b["id"]: tuple(b["position"]) for b in sch.model["blocks"]}
+    assert {b: after[b] for b in power} == {b: (500, 500) for b in power}
+    assert before["ref"] == (0, 0)
+
+    # The gate wire leaves the subset, so it constrains nothing and needed no skip_wires.
+    assert "SW" not in pos
+
+
+@requires_gsim_py
+def test_layered_layout_blocks_ignores_an_id_the_model_does_not_have():
+    sch = _mixed_paradigm_sheet()
+    pos = sch.layered_layout(blocks=["ref", "duty", "GHOST"], apply=False)
+    assert set(pos) == {"ref", "duty"}
+
+
 @requires_gsim_py
 def test_layered_layout_tolerates_a_pure_cycle_without_hanging():
     sch, _ = _signal_chain()

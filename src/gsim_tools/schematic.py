@@ -958,16 +958,22 @@ class Schematic:
         self,
         bboxes: Optional[dict[str, "tuple[int, int]"]],
         default_size: "tuple[int, int]",
+        only: Optional["Collection[str]"] = None,
     ) -> "list[tuple[str, tuple[int, int]]]":
         """``(block id, (w, h))`` for every block in the *model*, in document order.
 
         The model is authoritative rather than :attr:`blocks`, so a schematic loaded from disk
         or rebuilt through :meth:`replace_model` lays out just as well as one built here.
+
+        ``only`` restricts the result to those ids (document order is preserved); an id in
+        ``only`` that the model does not have is simply absent from the result.
         """
         sizes = dict(bboxes or {})
+        wanted = None if only is None else set(only)
         return [
             (b["id"], tuple(sizes.get(b["id"], default_size)))  # type: ignore[misc]
             for b in json.loads(self._model)["blocks"]
+            if wanted is None or b["id"] in wanted
         ]
 
     def set_positions(self, positions: "dict[str, tuple[int, int]]") -> "Schematic":
@@ -994,6 +1000,7 @@ class Schematic:
         self,
         bboxes: Optional[dict[str, "tuple[int, int]"]] = None,
         *,
+        blocks: Optional["Collection[str]"] = None,
         default_size: "tuple[int, int]" = DEFAULT_BLOCK_SIZE,
         column_gap: int = 80,
         row_gap: int = 60,
@@ -1026,7 +1033,21 @@ class Schematic:
         * gives every block a **real default size** (:data:`DEFAULT_BLOCK_SIZE`) instead of
           treating an unmeasured block as a zero-sized point, which is what makes the vertical
           stacking inside a column actually clear;
-        * snaps to the **model's own grid** by default and can be offset by ``origin``.
+        * snaps to the **model's own grid** by default and can be offset by ``origin``;
+        * lets the **laid-out set be chosen** with ``blocks``.
+
+        ``blocks`` is the crux for a mixed-paradigm sheet. Layering is a *signal-flow* notion:
+        blocks are ordered by how deep they sit in a directed chain. A physical network has no
+        such direction -- its wires are conductive joins and its ground node is joined to half
+        the circuit -- so a power stage cannot be layered, only drawn. But a power-electronics
+        schematic is normally *both*: a power stage plus the control loop around it. Without
+        ``blocks`` every block in the model takes part, and each one the chosen edges never
+        touch lands in layer 0, so laying out the control chain of a buck converter drags its
+        seven power-stage blocks into the chain's first column and leaves a hole where they
+        were. Naming just the control blocks lays out that sub-sheet and leaves every other
+        block exactly where it was; edges to a non-member are dropped along with it, so the
+        gate wire down into the switch needs no separate ``skip_wires`` entry. Place the rest
+        with :meth:`set_positions` or :meth:`place_without_overlap`.
 
         ``bboxes`` maps block id to ``(width, height)``; sizes come from evaluating each
         block's GSF contract, which this layer does not do for you. ``column_gap``/``row_gap``
@@ -1034,8 +1055,8 @@ class Schematic:
         """
         gsim_py = _gsim_py()
         model = json.loads(self._model)
-        blocks = self._sized_blocks(bboxes, default_size)
-        known = {block_id for block_id, _ in blocks}
+        sized = self._sized_blocks(bboxes, default_size, blocks)
+        known = {block_id for block_id, _ in sized}
 
         if edges is None:
             skipped = set(skip_wires)
@@ -1047,7 +1068,7 @@ class Schematic:
         pairs = [(a, b) for a, b in edges if a in known and b in known and a != b]
 
         raw = gsim_py.layered_layout(
-            json.dumps([{"id": i, "w": s[0], "h": s[1]} for i, s in blocks]),
+            json.dumps([{"id": i, "w": s[0], "h": s[1]} for i, s in sized]),
             json.dumps([list(e) for e in pairs]),
             column_gap,
             row_gap,
