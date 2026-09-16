@@ -432,3 +432,140 @@ def test_context_manager_and_model_escape_hatch():
         # replace_model puts a model built by a raw gsim_py call back in.
         sch.replace_model(text)
         assert sch.model["id"] == "ctx"
+
+
+# ---------------------------------------------------------------------------
+# Layout
+# ---------------------------------------------------------------------------
+
+
+def _signal_chain():
+    """A small multi-layer signal-flow graph with a fan-out and a feedback wire.
+
+    ``src -> sum -> pi -> plant``, ``pi -> monitor`` (fan-out, so one column holds two
+    blocks), and ``plant -> sum`` (the feedback that makes the graph cyclic, exactly as a real
+    control loop is).
+    """
+    sch = S.Schematic("chain", "Chain", grid=10)
+    src = sch.add("source.const", id="src", value=1.0)
+    junction = sch.add("control.sum", id="sum", signs=["+", "-"])
+    pi = sch.add("control.gain", id="pi", k=2.0)
+    plant = sch.add("control.gain", id="plant", k=0.5)
+    monitor = sch.add("control.gain", id="monitor", k=1.0)
+    sch.connect(src.out, junction["in1"])
+    sch.connect(junction.out, pi["in"])
+    sch.connect(pi.out, plant["in"])
+    sch.connect(pi.out, monitor["in"])
+    feedback = sch.connect(plant.out, junction["in2"])
+    return sch, feedback
+
+
+@requires_gsim_py
+def test_layered_layout_orders_blocks_along_the_signal_flow():
+    sch, feedback = _signal_chain()
+    pos = sch.layered_layout(skip_wires=[feedback.id])
+
+    assert set(pos) == {"src", "sum", "pi", "plant", "monitor"}
+    # Each stage strictly further along +x than the one feeding it.
+    assert pos["src"][0] < pos["sum"][0] < pos["pi"][0] < pos["plant"][0]
+    # The fan-out pair shares a column and is separated vertically instead.
+    assert pos["plant"][0] == pos["monitor"][0]
+    assert pos["plant"][1] != pos["monitor"][1]
+    # And the model itself was rewritten, not just the return value.
+    by_id = {b["id"]: tuple(b["position"]) for b in sch.model["blocks"]}
+    assert by_id == pos
+
+
+@requires_gsim_py
+def test_layered_layout_leaves_no_two_blocks_overlapping():
+    sch, feedback = _signal_chain()
+    size = (100, 80)
+    pos = sch.layered_layout(skip_wires=[feedback.id], default_size=size)
+
+    rects = [(x, y, x + size[0], y + size[1]) for x, y in pos.values()]
+    for i, a in enumerate(rects):
+        for b in rects[i + 1 :]:
+            assert not (a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3])
+
+
+@requires_gsim_py
+def test_layered_layout_snaps_to_the_grid_and_honours_the_origin():
+    sch, feedback = _signal_chain()
+    pos = sch.layered_layout(skip_wires=[feedback.id], origin=(400, 200))
+    assert all(x % 10 == 0 and y % 10 == 0 for x, y in pos.values())
+    assert min(x for x, _ in pos.values()) == 400
+    assert min(y for _, y in pos.values()) == 200
+
+
+@requires_gsim_py
+def test_layered_layout_can_compute_without_applying():
+    sch, feedback = _signal_chain()
+    before = {b["id"]: tuple(b["position"]) for b in sch.model["blocks"]}
+    pos = sch.layered_layout(skip_wires=[feedback.id], apply=False)
+    after = {b["id"]: tuple(b["position"]) for b in sch.model["blocks"]}
+    assert after == before
+    assert pos != before  # it really did compute something
+
+
+@requires_gsim_py
+def test_layered_layout_accepts_an_explicit_edge_list_and_per_block_sizes():
+    """An edge naming a block that is not in the model is ignored, not an error."""
+    sch, _ = _signal_chain()
+    pos = sch.layered_layout(
+        edges=[("src", "plant"), ("plant", "GHOST")],
+        bboxes={"src": (40, 40), "plant": (200, 40)},
+    )
+    assert pos["src"][0] < pos["plant"][0]
+    # Only the one real edge constrains anything; everything else lands in the first column.
+    assert pos["src"][0] == pos["sum"][0] == pos["pi"][0] == pos["monitor"][0]
+
+
+@requires_gsim_py
+def test_layered_layout_tolerates_a_pure_cycle_without_hanging():
+    sch, _ = _signal_chain()
+    pos = sch.layered_layout()  # feedback wire included: the graph is cyclic
+    assert len(pos) == 5
+
+
+@requires_gsim_py
+def test_set_positions_applies_a_nudged_layout():
+    """The compute-nudge-apply workflow: layout, move one block, put it back."""
+    sch, feedback = _signal_chain()
+    pos = sch.layered_layout(skip_wires=[feedback.id], apply=False)
+    pos["monitor"] = (pos["monitor"][0], 999)
+    sch.set_positions({"monitor": pos["monitor"], "UNKNOWN": (5, 5)})  # unknown id ignored
+
+    by_id = {b["id"]: tuple(b["position"]) for b in sch.model["blocks"]}
+    assert by_id["monitor"] == pos["monitor"]
+    assert by_id["src"] == (0, 0)  # untouched blocks keep what they had
+
+
+@requires_gsim_py
+def test_place_without_overlap_steps_around_an_occupied_spot():
+    sch = S.Schematic("place", grid=10)
+    sch.add("control.gain", id="a", at=(0, 0), k=1.0)
+    sch.add("control.gain", id="b", at=(500, 500), k=1.0)
+
+    # Asking for exactly where 'a' sits pushes 'b' clear of it along x, and the model moves.
+    x, y = sch.place_without_overlap("b", (0, 0), size=(100, 80), default_size=(100, 80))
+    assert (x, y) != (0, 0)
+    assert abs(x) >= 100
+    assert y == 0
+    assert (
+        tuple(next(b for b in sch.model["blocks"] if b["id"] == "b")["position"]) == (x, y)
+    )
+
+    # A clear spot is returned untouched, and 'vertical' moves along y instead.
+    assert sch.place_without_overlap("b", (600, 300), apply=False) == (600, 300)
+    _, vy = sch.place_without_overlap("b", (0, 0), axis="vertical", apply=False)
+    assert vy != 0
+
+
+@requires_gsim_py
+def test_place_without_overlap_rejects_an_unknown_block_and_a_bad_axis():
+    sch = S.Schematic("place2", grid=10)
+    sch.add("control.gain", id="a", k=1.0)
+    with pytest.raises(S.UnknownBlockError):
+        sch.place_without_overlap("nope", (0, 0))
+    with pytest.raises(S.SchematicError, match="invalid axis"):
+        sch.place_without_overlap("a", (0, 0), axis="diagonal")

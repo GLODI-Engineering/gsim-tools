@@ -52,7 +52,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any, Iterable, Optional, Sequence, Union
+from typing import Any, Collection, Iterable, Optional, Sequence, Union
 
 __all__ = [
     "Schematic",
@@ -61,6 +61,7 @@ __all__ = [
     "Wire",
     "CompileResult",
     "infer_paradigm",
+    "DEFAULT_BLOCK_SIZE",
     "SchematicError",
     "GsimPyNotAvailable",
     "DuplicateIdError",
@@ -405,6 +406,13 @@ _WIRE_KIND_BY_PARADIGM: dict[str, str] = {
 _BRIDGING_PARADIGMS = frozenset(
     {"converter", "routing", "hierarchy", "annotation", "spice-subckt"}
 )
+
+#: The ``(width, height)`` assumed for a block whose real size the caller did not supply to
+#: :meth:`Schematic.layered_layout` or :meth:`Schematic.place_without_overlap`. The underlying
+#: ``gsim_py`` functions treat an unknown block as zero-sized, which collapses a whole column
+#: onto one point; a generous rectangle (roomier than the catalogue's ~40-80 unit symbols, so
+#: that a long authored name has somewhere to go) is the useful default instead.
+DEFAULT_BLOCK_SIZE: "tuple[int, int]" = (100, 80)
 
 
 # ---------------------------------------------------------------------------
@@ -945,6 +953,181 @@ class Schematic:
             row_gap,
         )
         return self
+
+    def _sized_blocks(
+        self,
+        bboxes: Optional[dict[str, "tuple[int, int]"]],
+        default_size: "tuple[int, int]",
+    ) -> "list[tuple[str, tuple[int, int]]]":
+        """``(block id, (w, h))`` for every block in the *model*, in document order.
+
+        The model is authoritative rather than :attr:`blocks`, so a schematic loaded from disk
+        or rebuilt through :meth:`replace_model` lays out just as well as one built here.
+        """
+        sizes = dict(bboxes or {})
+        return [
+            (b["id"], tuple(sizes.get(b["id"], default_size)))  # type: ignore[misc]
+            for b in json.loads(self._model)["blocks"]
+        ]
+
+    def set_positions(self, positions: "dict[str, tuple[int, int]]") -> "Schematic":
+        """Move the named blocks to ``{block id: (x, y)}``. Returns ``self``.
+
+        The other half of the compute-nudge-apply workflow: take what
+        :meth:`layered_layout` returns (with ``apply=False``), adjust the few blocks whose
+        visual grouping the layerer cannot know, and put the result back. Blocks not named
+        keep their positions; an id the model does not have is ignored.
+        """
+        self._apply_positions(positions)
+        return self
+
+    def _apply_positions(self, positions: "dict[str, tuple[int, int]]") -> None:
+        """Write ``positions`` into the held model; blocks not mentioned keep theirs."""
+        model = json.loads(self._model)
+        for block in model["blocks"]:
+            pos = positions.get(block["id"])
+            if pos is not None:
+                block["position"] = [int(pos[0]), int(pos[1])]
+        self._model = json.dumps(model)
+
+    def layered_layout(
+        self,
+        bboxes: Optional[dict[str, "tuple[int, int]"]] = None,
+        *,
+        default_size: "tuple[int, int]" = DEFAULT_BLOCK_SIZE,
+        column_gap: int = 80,
+        row_gap: int = 60,
+        grid: Optional[int] = None,
+        edges: Optional["Sequence[tuple[str, str]]"] = None,
+        skip_wires: "Collection[str]" = (),
+        origin: "tuple[int, int]" = (0, 0),
+        apply: bool = True,
+    ) -> "dict[str, tuple[int, int]]":
+        """Lay the schematic out left-to-right by signal-flow depth, and return the positions.
+
+        Wraps ``gsim_py.layered_layout``: a longest-path (Sugiyama-style) layering over the
+        wire graph via Kahn's algorithm. Every block is assigned a layer one past the deepest
+        block that feeds it; layers become columns ordered along +x, and the blocks within a
+        column are stacked down +y in document order. It guarantees a left-to-right reading
+        order and no overlap; it does *not* minimise wire crossings, and a feedback loop (a
+        cycle) leaves its members at whatever layer Kahn's algorithm had reached — both are
+        the underlying algorithm's documented, deliberate limits.
+
+        Unlike :meth:`auto_arrange` -- which is the same algorithm, but always over *all* the
+        model's wires, and which only mutates the model -- this method:
+
+        * **returns the positions** as ``{block id: (x, y)}``, so a caller can inspect them,
+          nudge the few blocks whose grouping a generic layerer cannot know, and feed the
+          result back (``apply=False`` computes without touching the model);
+        * lets the **edge set be chosen**. That matters for a control loop: feedback wires make
+          cycles, and the layering is only meaningful over the forward path. Name the feedback
+          wires in ``skip_wires`` (wire ids) or pass ``edges`` -- ``[(from_block, to_block),
+          ...]`` -- outright;
+        * gives every block a **real default size** (:data:`DEFAULT_BLOCK_SIZE`) instead of
+          treating an unmeasured block as a zero-sized point, which is what makes the vertical
+          stacking inside a column actually clear;
+        * snaps to the **model's own grid** by default and can be offset by ``origin``.
+
+        ``bboxes`` maps block id to ``(width, height)``; sizes come from evaluating each
+        block's GSF contract, which this layer does not do for you. ``column_gap``/``row_gap``
+        are the clear space between columns/rows, on top of the block sizes.
+        """
+        gsim_py = _gsim_py()
+        model = json.loads(self._model)
+        blocks = self._sized_blocks(bboxes, default_size)
+        known = {block_id for block_id, _ in blocks}
+
+        if edges is None:
+            skipped = set(skip_wires)
+            edges = [
+                (w["from"]["block"], w["to"]["block"])
+                for w in model["wires"]
+                if w["id"] not in skipped
+            ]
+        pairs = [(a, b) for a, b in edges if a in known and b in known and a != b]
+
+        raw = gsim_py.layered_layout(
+            json.dumps([{"id": i, "w": s[0], "h": s[1]} for i, s in blocks]),
+            json.dumps([list(e) for e in pairs]),
+            column_gap,
+            row_gap,
+            model["grid"] if grid is None else grid,
+        )
+        positions = {
+            block_id: (int(xy[0]) + origin[0], int(xy[1]) + origin[1])
+            for block_id, xy in json.loads(raw).items()
+        }
+        if apply:
+            self._apply_positions(positions)
+        return positions
+
+    def place_without_overlap(
+        self,
+        block_id: str,
+        at: "tuple[int, int]",
+        *,
+        size: Optional["tuple[int, int]"] = None,
+        bboxes: Optional[dict[str, "tuple[int, int]"]] = None,
+        default_size: "tuple[int, int]" = DEFAULT_BLOCK_SIZE,
+        axis: str = "horizontal",
+        margin: int = 20,
+        grid: Optional[int] = None,
+        apply: bool = True,
+    ) -> "tuple[int, int]":
+        """Move ``block_id`` to the free spot nearest ``at``, and return that ``(x, y)``.
+
+        Wraps ``gsim_py.place_without_overlap``: starting at ``at``, it steps outward in both
+        directions along ``axis`` (``"horizontal"`` or ``"vertical"``) in grid-sized steps
+        until the block's rectangle clears every *other* block's rectangle by ``margin``. The
+        incremental counterpart to :meth:`layered_layout` -- "drop this one block in near
+        here" while building a schematic up, rather than arranging the whole sheet.
+
+        The rectangles it avoids are the other blocks' current positions in the model, sized
+        from ``bboxes`` (or ``default_size``); ``size`` is this block's own size, defaulting to
+        its ``bboxes`` entry and then to ``default_size``. ``grid`` defaults to the model's.
+        ``apply=False`` computes the position without moving the block.
+
+        Raises :class:`UnknownBlockError` for an id the model does not have, and
+        :class:`SchematicError` for an axis other than the two the underlying function accepts.
+        """
+        if axis not in ("horizontal", "vertical"):
+            raise SchematicError(
+                f"invalid axis {axis!r} (must be 'horizontal' or 'vertical')"
+            )
+        gsim_py = _gsim_py()
+        model = json.loads(self._model)
+        sizes = dict(bboxes or {})
+        by_id = {b["id"]: b for b in model["blocks"]}
+        if block_id not in by_id:
+            raise UnknownBlockError(
+                f"no block {block_id!r} in this schematic; have: "
+                f"{', '.join(sorted(by_id))}"
+            )
+        w, h = size or sizes.get(block_id, default_size)
+        existing = [
+            {
+                "x": int(b["position"][0]),
+                "y": int(b["position"][1]),
+                "w": int(sizes.get(b["id"], default_size)[0]),
+                "h": int(sizes.get(b["id"], default_size)[1]),
+            }
+            for b in model["blocks"]
+            if b["id"] != block_id
+        ]
+        raw = gsim_py.place_without_overlap(
+            json.dumps(existing),
+            int(w),
+            int(h),
+            int(at[0]),
+            int(at[1]),
+            axis,
+            margin,
+            model["grid"] if grid is None else grid,
+        )
+        x, y = (int(v) for v in json.loads(raw))
+        if apply:
+            self._apply_positions({block_id: (x, y)})
+        return (x, y)
 
     # -- output --------------------------------------------------------------
 
