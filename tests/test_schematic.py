@@ -105,6 +105,24 @@ def test_missing_gsim_py_raises_one_actionable_error(monkeypatch):
         ("converter.sig2phys", "converter"),
         ("hierarchy.subsystem", "hierarchy"),
         ("annotation.note", "annotation"),
+        # The rest of the compile registry's signal-flow families. machine.pmsm is
+        # signal-flow despite modelling a physical machine: every one of its ports is
+        # kind=signal (vd/vq/t_load in, id/iq/omega/theta_e out).
+        ("machine.pmsm", "signal-flow"),
+        ("math.fn3", "signal-flow"),
+        ("math.table_lookup", "signal-flow"),
+        ("logic.gate", "signal-flow"),
+        ("logic.flip_flop", "signal-flow"),
+        ("source.pulsewave", "signal-flow"),
+        ("source.expwave", "signal-flow"),
+        ("source.sffmwave", "signal-flow"),
+        ("source.time", "signal-flow"),
+        # A dependent source is an electrical device, like an independent one.
+        ("source.dependent.vcvs", "physical-network"),
+        ("source.dependent.cccs", "physical-network"),
+        # goto/from are paradigm-agnostic tunnels, unlike routing.ground above.
+        ("routing.goto", "routing"),
+        ("routing.from", "routing"),
         # No safe default: better a clear error than a guess that fails downstream.
         ("something.unknown", None),
         ("source.mystery", None),

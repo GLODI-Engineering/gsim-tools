@@ -339,6 +339,12 @@ _PARADIGM_BY_PREFIX: dict[str, str] = {
     "control": "signal-flow",
     "power": "signal-flow",
     "extensibility": "signal-flow",
+    # Every remaining signal-flow family in the compile registry. `machine.*` is listed here
+    # even though a real machine is a physical device: `machine.pmsm`'s ports are all
+    # `kind=signal` (vd/vq/t_load in, id/iq/omega/theta_e out), so it is a signal-flow block.
+    "machine": "signal-flow",
+    "math": "signal-flow",
+    "logic": "signal-flow",
     "converter": "converter",
     "hierarchy": "hierarchy",
     "annotation": "annotation",
@@ -346,6 +352,8 @@ _PARADIGM_BY_PREFIX: dict[str, str] = {
 
 #: Types whose family default does not apply. ``source.*`` splits: an independent electrical
 #: source is physical-network, a signal-flow constant/waveform generator is signal-flow.
+#: ``routing.goto``/``routing.from`` are paradigm-agnostic tunnels (paradigm ``routing``),
+#: unlike ``routing.ground``, which the prefix default correctly calls physical-network.
 _PARADIGM_BY_TYPE: dict[str, str] = {
     "source.const": "signal-flow",
     "source.step": "signal-flow",
@@ -354,6 +362,12 @@ _PARADIGM_BY_TYPE: dict[str, str] = {
     "source.sinwave": "signal-flow",
     "source.square": "signal-flow",
     "source.pulse": "signal-flow",
+    "source.pulsewave": "signal-flow",
+    "source.expwave": "signal-flow",
+    "source.sffmwave": "signal-flow",
+    "source.time": "signal-flow",
+    "routing.goto": "routing",
+    "routing.from": "routing",
 }
 
 
@@ -369,10 +383,11 @@ def infer_paradigm(type_: str) -> Optional[str]:
         return _PARADIGM_BY_TYPE[type_]
     prefix = type_.split(".", 1)[0]
     if prefix == "source":
-        # An electrical source (source.voltage.*, source.current.*) is physical-network;
-        # anything else under source.* is a signal generator, handled by _PARADIGM_BY_TYPE.
+        # An electrical source (source.voltage.*, source.current.*, source.dependent.*) is
+        # physical-network; anything else under source.* is a signal generator, handled by
+        # _PARADIGM_BY_TYPE.
         parts = type_.split(".")
-        if len(parts) >= 2 and parts[1] in ("voltage", "current"):
+        if len(parts) >= 2 and parts[1] in ("voltage", "current", "dependent"):
             return "physical-network"
         return None
     return _PARADIGM_BY_PREFIX.get(prefix)
