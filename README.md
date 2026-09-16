@@ -55,6 +55,26 @@ run = results.run_netlist_text(sch.compile(), mode="transient", tfinal=0.02, dt=
 print(measure.find_at(run.trace.samples("V(out)"), 1e-3))
 ```
 
+### Layout
+
+Coordinates need not be hand-picked. `Schematic` wraps all three of `gsim_py`'s layout
+entry points:
+
+```python
+sch.auto_arrange()                  # layer the whole model over *all* its wires, in place
+pos = sch.layered_layout(           # the same layering, but it hands the positions back
+    bboxes={"IM": (80, 88)},        # real sizes where you know them
+    skip_wires=[feedback.id],       # feedback makes cycles; layer the forward path only
+    column_gap=90, row_gap=70,
+)
+sch.place_without_overlap("VSI", (900, 200))    # drop one block in near a point
+```
+
+`layered_layout` is a longest-path (Sugiyama-style) layering via Kahn's algorithm: columns run
+left-to-right by signal-flow depth, blocks stack down within a column. It guarantees reading
+order and no overlap — it does not minimise wire crossings, and cycle members stay wherever the
+layering stalled, so a feedback loop is usually worth excluding via `skip_wires`.
+
 Or, with no `gsim_py` anywhere, just read and measure an existing run:
 
 ```python
