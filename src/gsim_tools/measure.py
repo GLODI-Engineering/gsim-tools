@@ -184,7 +184,13 @@ def interpolate(samples: Sequence[Sample], t: float) -> Optional[float]:
         return first.v
     if t == last.t:
         return last.v
-    idx = bisect.bisect_left([s.t for s in samples], t)
+    # `key=` rather than materialising the times: `bisect_left([s.t for s in
+    # samples], t)` rebuilt the whole list of times on *every* call, making
+    # this O(n) instead of O(log n) and defeating the bisect entirely. Since
+    # every value-at-an-arbitrary-time measurement is built on this primitive,
+    # anything that interpolated once per sample became quadratic —
+    # `average_power` over a 20 ms run at 0.1 us took about fifteen minutes.
+    idx = bisect.bisect_left(samples, t, key=lambda s: s.t)
     if idx < len(samples) and samples[idx].t == t:
         return samples[idx].v
     a, b = samples[idx - 1], samples[idx]
