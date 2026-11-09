@@ -1,13 +1,49 @@
 [project]
 name = "gsim-tools"
 version = "0.1.0"
-description = "Pure-Python tooling for general-simulator: schematic building, result parsing, and waveform measurement."
+description = "Build circuit and control schematics in Python, compile them to netlists, and measure the waveforms that come back."
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
 readme = "README.md"
 # No runtime dependencies at all: result parsing (CSV), waveform measurement, and log parsing
 # are stdlib-only, so `pip install gsim-tools` needs no compiler and no Rust toolchain.
 dependencies = []
+keywords = [
+    "circuit",
+    "schematic",
+    "simulation",
+    "netlist",
+    "spice",
+    "power-electronics",
+    "control-systems",
+    "waveform",
+    "measurement",
+    "thd",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Electronic Design Automation (EDA)",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://github.com/GLODI-Engineering/gsim-tools"
+Source = "https://github.com/GLODI-Engineering/gsim-tools"
+Issues = "https://github.com/GLODI-Engineering/gsim-tools/issues"
+"The engine" = "https://github.com/GLODI-Engineering/general-simulator"
+"The Rust core (gsim_py)" = "https://github.com/GLODI-Engineering/gsim-core"
+"Schematic editor" = "https://github.com/GLODI-Engineering/general-simulator-gui"
 
 [project.optional-dependencies]
 # Reading kernel-sidecar SIMULATE_RESULT manifests (manifest.json + data.h5, or the older
@@ -16,16 +52,20 @@ sidecar = [
     "numpy>=1.26",
     "h5py>=3.11",
 ]
-# gsim_tools.schematic needs `gsim_py`, which is NOT on PyPI -- it is a local PyO3 extension
-# built from the sibling gsim-core repository, so this extra installs nothing and exists to
-# document the requirement:
+# `gsim_tools.schematic` -- the main surface -- needs `gsim_py`, the PyO3 extension built
+# from gsim-core. It is not yet on a package index, so this extra installs nothing and
+# exists to name the requirement; once `gsim-py` publishes wheels this becomes
+# `schematic = ["gsim-py>=0.1"]` and a single `pip install gsim-tools[schematic]` is enough.
 #
-#     cd <path to>/gsim-core/crates/gsim-py
-#     python3 -m venv .venv && source .venv/bin/activate
-#     pip install maturin && maturin develop --release
+# Until then, build it once:
 #
-# then install gsim-tools into that same virtualenv. gsim_tools.schematic raises
-# GsimPyNotAvailable with these instructions if it is missing.
+#     git clone https://github.com/GLODI-Engineering/gsim-core
+#     cd gsim-core/crates/gsim-py && pip install maturin && maturin build --release
+#     pip install ../../target/wheels/gsim_py-*.whl
+#
+# into the same environment as gsim-tools. Every entry point in `schematic` raises
+# GsimPyNotAvailable with these instructions when it is missing -- including the
+# `Schematic(...)` constructor, since the document model itself lives in the core.
 schematic = []
 dev = [
     "pytest>=8.0",
