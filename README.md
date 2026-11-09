@@ -136,3 +136,11 @@ Tests marked `simulator` additionally need the `general-simulator` binary (on `P
 `$GSIM_SIMULATOR`); tests marked `gsim_py` need the extension built as above. Both are skipped
 when unavailable. `examples/rc_lowpass_end_to_end.py` runs the whole pipeline and asserts a
 known-correct numeric answer; see its own header for how to run it.
+
+## Licence
+
+MIT — see [`LICENSE`](./LICENSE).
+
+`gsim-core`, whose `gsim_py` extension `gsim_tools.schematic` is built on, is MIT too.
+The schematic editor and the UI-driving library in the same family are AGPL-3.0; this
+package and the core are deliberately permissive so they can be embedded.
