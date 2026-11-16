@@ -63,15 +63,18 @@ the schematic editor, this library and the engine, instead of three copies that 
 `gsim_tools.schematic` is the Python layer over it, so it needs the `gsim_py` extension **from
 the moment you construct a `Schematic`**, not only to compile.
 
-Until `gsim-py` publishes wheels, build it once into the same environment:
+Until `gsim-py` publishes wheels, build it once into the same environment. The wheel lands in
+`gsim-core`'s **workspace** target directory, two levels up from the crate you build in:
 
 ```bash
 git clone https://github.com/GLODI-Engineering/gsim-core
 cd gsim-core/crates/gsim-py
 pip install maturin
 maturin build --release
-pip install ../../target/wheels/gsim_py-*.whl
+pip install "$(ls -t ../../target/wheels/gsim_py-*.whl | head -1)"
 ```
+
+If you already have a checkout, the wheels are in `<gsim-core>/target/wheels/`.
 
 Without it, every entry point in `schematic` raises `GsimPyNotAvailable` carrying these
 instructions. The other three modules are unaffected and need no toolchain at all.
@@ -90,13 +93,32 @@ r1 = sch.add("passive.resistor", id="R1", at=(60, 0), R=1000.0)
 c1 = sch.add("passive.capacitor", id="C1", at=(120, 0), C=1e-6)
 gnd = sch.add("routing.ground", id="gnd", at=(60, 80))
 sch.connect(vin.p, r1.p1)
-sch.connect(r1.p2, c1.p1)
+sch.connect(r1.p2, c1.p1, net="out")      # name the net, so the column is V(out)
 sch.connect(c1.p2, gnd.p)
 sch.connect(vin.n, gnd.p)
 
 run = results.run_netlist_text(sch.compile(), mode="transient", tfinal=0.02, dt=1e-5)
-print(measure.find_at(run.trace.samples("V(out)"), 1e-3))
+print(measure.find_at(run.trace.samples("V(out)"), 1e-3))   # 3.1605, against 3.1606 analytic
 ```
+
+### A net's name is the column name
+
+`net="out"` on that wire is what makes `V(out)` exist. Without it the compiler names every net
+after one of its own endpoints — the lexicographically smallest `(block, port)` pair on the net
+(`gsim-core`'s `compile/nets.rs`) — so the same two wires would have come out as:
+
+```
+Vin n_R1_p1 0 5
+R1 n_R1_p1 n_C1_p1 1000
+C1 n_C1_p1 0 1e-6
+```
+
+and `trace.samples("V(out)")` would raise, because there is no `out` node. Those generated names
+are stable and predictable, so `V(n_C1_p1)` works too — but **name the nets you intend to
+measure**. It is the difference between a plot script that survives inserting a block and one
+that does not.
+
+Ground is the exception: the net a `routing.ground` touches is always `0`, whatever it is named.
 
 ### Layout
 
@@ -125,6 +147,94 @@ trace = results.read_csv_file("run.csv")
 v = trace.samples("V(a)")
 print(measure.rms(v), measure.thd(v, fundamental_freq=50.0, num_harmonics=5))
 ```
+
+## Running a `.gsim_sch` from the command line
+
+`general-simulator`'s CLI takes a `.cir` and nothing else — handing it a `.gsim_sch` gets you a
+parse error, because compiling lives here (and in the GUI's sidecar), not in the engine. The
+recipe:
+
+```python
+from pathlib import Path
+from gsim_tools import results
+from gsim_tools.schematic import Schematic
+
+netlist = Schematic.load("converter.gsim_sch").compile()
+Path("converter.cir").write_text(netlist)
+```
+
+```bash
+general-simulator converter.cir --mode transient --tfinal 20e-3 --dt 10e-9 > out.csv
+```
+
+or skip the file and let this package run it, which is what the example above does:
+
+```python
+run = results.run_netlist_text(netlist, mode="transient", tfinal=20e-3, dt=10e-9)
+```
+
+### Finding the binary
+
+`results.run_*` locates the engine through an explicit `simulator=<path>`, then the
+`GSIM_SIMULATOR` environment variable, then `general-simulator` on `PATH`, and raises
+`ResultError` with the build command if none of them hits:
+
+```bash
+export GSIM_SIMULATOR=<general-simulator>/target/release/general-simulator
+```
+
+The release binary is dynamically linked against `libpython3.12.so.1.0` (the engine's `pyblock`
+support), which is not on the default loader path. If it exits 127 before printing anything —
+on any deck, `pyblock` or not — add its Python's library directory:
+
+```bash
+export LD_LIBRARY_PATH=<python-prefix>/lib
+```
+
+## Modelling rules the engine enforces
+
+Four constraints that are checked downstream of this library, so a `Schematic` that builds and
+validates cleanly can still be rejected at compile or solve time. They are the ones worth
+knowing before you write the sheet rather than after.
+
+**A switch gate must be driven through a `converter.sig2phys` with `domain=voltage`.** Not a
+`pid`, `pwm` or `hysteresis` output wired straight to the gate. The engine's
+[gate bindings](https://github.com/GLODI-Engineering/general-simulator/blob/main/book/user-guide/src/gate-bindings.md)
+page has the reasoning; the practical consequence is one `sig2phys` per gate, so a half-bridge
+leg's two switches need two of them. A fixed, always-on gate is a `const` through its own
+`sig2phys`.
+
+**Every ideal switch in one run must share the same `r_on`.** `dae-runtime`'s switch mechanism
+carries one shared on-resistance per call, enforced in `general-mna`'s `system_builder.rs`:
+
+```
+all ideal switches must share the same r_on (dae-runtime's switch model uses one shared
+on-resistance per call); got 0.02 and 0.05
+```
+
+This is a solver limitation, not a netlist nicety — differing values are rejected, not averaged.
+
+**`Goto`/`From` carry causal port kinds only.** `signal`, `signal-bus`, `function-call` and
+`physical-signal` are routable; the acausal conserving kinds (`physical-electrical` and the rest
+of `physical-*`), `mixed`, and the `reserved.*` placeholders are not. So an **electrical** net
+cannot be tagged across the sheet — use a named net (`connect(..., net="VBUS")`) instead. A
+rejected tag arrives here as `RoutingKindUnsupportedError`.
+
+**`connect` cannot infer the wire kind between two bridging blocks.** A bridging block
+(`converter.*`, `routing.*`, a subckt instance) contributes no kind of its own, so when *both*
+endpoints are bridging — `routing.from` into a `converter.sig2phys`, the usual gate-drive
+pattern — there is nothing to infer from and you must say which:
+
+```python
+sch.connect(from_tag.out, ("GATE", "in"), kind="signal")
+```
+
+(`converter.sig2phys`'s input port is called `in`, which is a Python keyword — hence the
+`("block", "port")` tuple form rather than attribute access. Every endpoint argument accepts
+either.)
+
+Inferring here would mean picking a side, which turns a genuine cross-paradigm mistake into a
+confusing downstream error. The same applies when the two sides disagree.
 
 ## Tests
 

@@ -184,7 +184,12 @@ def read_csv(text: str) -> Trace:
 
 
 def read_csv_file(path: PathLike) -> Trace:
-    """Read a ``general-simulator`` CSV file (``--format csv --out <path>``) into a Trace."""
+    """Read a ``general-simulator`` CSV file into a Trace.
+
+    The engine always writes CSV to stdout -- ``--out`` is honoured for ``--format raw`` only
+    and ignored for ``--format csv`` -- so such a file comes from a redirect
+    (``general-simulator deck.cir ... > run.csv``), not from ``--out``.
+    """
     return read_csv(pathlib.Path(path).read_text())
 
 
