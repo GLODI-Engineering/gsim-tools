@@ -531,8 +531,8 @@ def _mixed_paradigm_sheet():
     gnd = sch.add("routing.ground", id="gnd")
     vdc = sch.add("source.voltage.dc", id="Vdc", V=10.0)
     sw = sch.add(
-        "passive.switch.ideal", id="SW", r_on=0.1, g_breakdown=0.0, v_breakdown=-100.0,
-        g_off=1e-9, v_th=0.5, g_on=5.0,
+        "passive.switch.ideal", id="SW", r_on=0.1, body_g_breakdown=0.0,
+        body_v_breakdown=-100.0, body_g_off=1e-9, body_v_f=0.5, body_g_on=5.0,
     )
     rload = sch.add("passive.resistor", id="R", R=10.0)
     e = "physical-electrical"
