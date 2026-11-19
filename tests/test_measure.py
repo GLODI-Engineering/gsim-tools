@@ -16,13 +16,16 @@ import pytest
 
 from gsim_tools.measure import (
     Edge,
+    EmptySeriesError,
     EventSpec,
+    InvalidParameterError,
     Norm,
+    NotFoundError,
     Occurrence,
     Sample,
     Window,
-    avg,
     average_power,
+    avg,
     clip,
     deriv_at,
     duty_cycle,
@@ -44,11 +47,6 @@ from gsim_tools.measure import (
     thd,
     trig_targ,
     when,
-)
-from gsim_tools.measure import (
-    EmptySeriesError,
-    InvalidParameterError,
-    NotFoundError,
 )
 
 

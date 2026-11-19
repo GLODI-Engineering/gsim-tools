@@ -8,8 +8,8 @@ tests run against the committed ``.log`` fixtures the real binary wrote.
 from __future__ import annotations
 
 import pytest
-
 from conftest import fixture_text
+
 from gsim_tools.logs import (
     ErrorKind,
     MeasurementFailure,
@@ -19,7 +19,6 @@ from gsim_tools.logs import (
     parse_measurement_report,
     parse_stderr,
 )
-
 
 # ---------------------------------------------------------------------------
 # stderr diagnostics

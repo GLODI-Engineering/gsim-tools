@@ -11,12 +11,12 @@ from __future__ import annotations
 
 import json
 import pathlib
+from itertools import pairwise
 
 import pytest
-
 from conftest import FIXTURES, fixture_text
-from gsim_tools import logs, results
 
+from gsim_tools import logs, results
 
 # ---------------------------------------------------------------------------
 # general-simulator CSV
@@ -43,7 +43,7 @@ def test_samples_bridge_into_measure():
     assert samples[0].t == trace.time[0]
     assert samples[0].v == trace["V(a)"].values[0]
     # Strictly increasing time, which every measurement requires.
-    assert all(b.t > a.t for a, b in zip(samples, samples[1:]))
+    assert all(b.t > a.t for a, b in pairwise(samples))
 
 
 def test_unknown_signal_name_lists_what_is_available():
@@ -200,7 +200,7 @@ def test_read_manifest_carries_op_and_ac_extras(tmp_path):
 
 
 def test_missing_manifest_is_a_clear_error(tmp_path):
-    with pytest.raises(results.ResultError, match="no manifest.json"):
+    with pytest.raises(results.ResultError, match=r"no manifest\.json"):
         results.read_manifest(tmp_path)
 
 

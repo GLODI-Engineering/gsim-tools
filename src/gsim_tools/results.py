@@ -36,8 +36,10 @@ import pathlib
 import shutil
 import subprocess
 import tempfile
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Iterator, Optional, Sequence, Union
+from itertools import pairwise
+from typing import Any, Union
 
 from .measure import Sample
 
@@ -80,7 +82,7 @@ class Signal:
 
     def samples(self) -> list[Sample]:
         """This signal as a ``Sample`` list, ready for :mod:`gsim_tools.measure`."""
-        return [Sample(float(t), float(v)) for t, v in zip(self.time, self.values)]
+        return [Sample(float(t), float(v)) for t, v in zip(self.time, self.values, strict=True)]
 
     @property
     def unit(self) -> str:
@@ -96,7 +98,7 @@ class Trace:
     """
 
     time: Sequence[float]
-    signals: "dict[str, Signal]"
+    signals: dict[str, Signal]
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -134,7 +136,7 @@ class Trace:
         """
         if len(self.time) < 3:
             return True
-        steps = [b - a for a, b in zip(self.time, self.time[1:])]
+        steps = [b - a for a, b in pairwise(self.time)]
         lo, hi = min(steps), max(steps)
         return hi - lo <= tolerance * max(abs(hi), 1e-300)
 
@@ -207,7 +209,7 @@ def iter_csv_rows(lines: Iterable[str]) -> Iterator[tuple[list[str], list[float]
         for headers, row in iter_csv_rows(proc.stdout):
             ...
     """
-    headers: Optional[list[str]] = None
+    headers: list[str] | None = None
     for raw in lines:
         raw = raw.rstrip("\r\n")
         if not raw:
@@ -302,7 +304,7 @@ def _read_hdf5(
     h5_path: pathlib.Path, entries: Sequence[dict[str, Any]]
 ) -> tuple[list[float], dict[str, list[float]]]:
     try:
-        import h5py  # noqa: PLC0415 - optional, only needed for the HDF5 layout
+        import h5py
     except ImportError as exc:  # pragma: no cover - exercised only without h5py
         raise ResultError(
             f"{h5_path.name} is an HDF5-backed result, which needs h5py:\n"
@@ -327,7 +329,7 @@ def _read_npy_layout(
     result_dir: pathlib.Path, entries: Sequence[dict[str, Any]]
 ) -> tuple[list[float], dict[str, list[float]]]:
     try:
-        import numpy as np  # noqa: PLC0415 - optional, only needed for the .npy layout
+        import numpy as np
     except ImportError as exc:  # pragma: no cover - exercised only without numpy
         raise ResultError(
             "reading a .npy-backed result directory needs numpy:\n"
@@ -378,7 +380,7 @@ class SimulationRun:
     stderr: str
     log_text: str
     trace: Trace
-    measurements: "dict[str, float]"
+    measurements: dict[str, float]
     errors: list[Any]
 
     @property
@@ -386,7 +388,7 @@ class SimulationRun:
         return self.returncode == 0
 
 
-def find_simulator(explicit: Optional[PathLike] = None) -> pathlib.Path:
+def find_simulator(explicit: PathLike | None = None) -> pathlib.Path:
     """Locate the ``general-simulator`` binary.
 
     Search order: ``explicit`` argument, the ``GSIM_SIMULATOR`` environment variable (the same
@@ -394,7 +396,8 @@ def find_simulator(explicit: Optional[PathLike] = None) -> pathlib.Path:
     Raises ``ResultError`` naming the build command if none is found -- the same discipline as
     ``raw-output-python/_lib.py``'s ``cli_path()``.
     """
-    for candidate in (explicit, os.environ.get("GSIM_SIMULATOR"), shutil.which("general-simulator")):
+    found = shutil.which("general-simulator")
+    for candidate in (explicit, os.environ.get("GSIM_SIMULATOR"), found):
         if candidate:
             path = pathlib.Path(candidate)
             if path.exists():
@@ -411,13 +414,13 @@ def run_simulator(
     netlist: PathLike,
     *,
     mode: str = "transient",
-    tfinal: Optional[float] = None,
-    dt: Optional[float] = None,
-    devices: Optional[PathLike] = None,
+    tfinal: float | None = None,
+    dt: float | None = None,
+    devices: PathLike | None = None,
     extra_args: Sequence[str] = (),
-    simulator: Optional[PathLike] = None,
+    simulator: PathLike | None = None,
     check: bool = True,
-    cwd: Optional[PathLike] = None,
+    cwd: PathLike | None = None,
 ) -> SimulationRun:
     """Run ``general-simulator`` on ``netlist`` and collect everything it produced.
 

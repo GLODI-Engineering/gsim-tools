@@ -21,10 +21,11 @@ that would mean a genuine divergence in method.
 from __future__ import annotations
 
 import math
+from itertools import pairwise
 
 import pytest
-
 from conftest import fixture_text
+
 from gsim_tools import logs, measure, results
 
 
@@ -174,7 +175,7 @@ def test_sine_adaptive_trace_really_is_non_uniformly_stepped():
     ``general-simulator/tests/measure/test_sine_adaptive.py``.
     """
     trace, _ = load("sine_adaptive")
-    steps = [b - a for a, b in zip(trace.time, trace.time[1:])]
+    steps = [b - a for a, b in pairwise(trace.time)]
     assert len(trace) > 20
     assert max(steps) / min(steps) > 5.0, (
         f"expected a genuinely non-uniform step size, got a max/min dt ratio of "

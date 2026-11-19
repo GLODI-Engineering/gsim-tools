@@ -34,9 +34,10 @@ from __future__ import annotations
 
 import bisect
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Sequence, Union
+from itertools import pairwise
 
 __all__ = [
     "Sample",
@@ -143,9 +144,9 @@ class Window:
     unconstrained on that side. ``Window()`` is the full, unconstrained window.
     """
 
-    from_: Optional[float] = None
-    to: Optional[float] = None
-    td: Optional[float] = None
+    from_: float | None = None
+    to: float | None = None
+    td: float | None = None
 
     def effective_from(self) -> float:
         if self.from_ is not None and self.td is not None:
@@ -164,11 +165,11 @@ FULL = Window()
 """The unconstrained window (``Window::FULL`` in the Rust crate)."""
 
 
-def _win(window: Optional[Window]) -> Window:
+def _win(window: Window | None) -> Window:
     return FULL if window is None else window
 
 
-def interpolate(samples: Sequence[Sample], t: float) -> Optional[float]:
+def interpolate(samples: Sequence[Sample], t: float) -> float | None:
     """Linearly interpolate ``samples`` (sorted by non-decreasing ``t``) at time ``t``.
 
     Returns ``None`` if ``t`` falls outside the series' domain. Ported from ``sample.rs``'s
@@ -203,7 +204,7 @@ def check_monotonic(samples: Sequence[Sample]) -> None:
 
     Ported from ``sample.rs``'s ``check_monotonic``.
     """
-    for a, b in zip(samples, samples[1:]):
+    for a, b in pairwise(samples):
         if b.t <= a.t:
             raise InvalidParameterError(
                 "samples must be sorted by strictly increasing t "
@@ -211,7 +212,7 @@ def check_monotonic(samples: Sequence[Sample]) -> None:
             )
 
 
-def clip(samples: Sequence[Sample], window: Optional[Window] = None) -> list[Sample]:
+def clip(samples: Sequence[Sample], window: Window | None = None) -> list[Sample]:
     """Clip ``samples`` to the effective window, inserting interpolated boundary samples.
 
     A boundary falling strictly between two real samples becomes a new interpolated
@@ -259,13 +260,13 @@ class Extremum:
     time: float
 
 
-def max_(samples: Sequence[Sample], window: Optional[Window] = None) -> Extremum:
+def max_(samples: Sequence[Sample], window: Window | None = None) -> Extremum:
     """``MAX``/``MAX_AT``: the maximum value within ``window``, and when it occurs.
 
     Ported from ``scalar.rs``'s ``max``. Named with a trailing underscore so it does not
     shadow the builtin.
     """
-    best: Optional[Extremum] = None
+    best: Extremum | None = None
     for s in clip(samples, window):
         if best is None or s.v > best.value:
             best = Extremum(s.v, s.t)
@@ -273,12 +274,12 @@ def max_(samples: Sequence[Sample], window: Optional[Window] = None) -> Extremum
     return best
 
 
-def min_(samples: Sequence[Sample], window: Optional[Window] = None) -> Extremum:
+def min_(samples: Sequence[Sample], window: Window | None = None) -> Extremum:
     """``MIN``/``MIN_AT``: the minimum value within ``window``, and when it occurs.
 
     Ported from ``scalar.rs``'s ``min``.
     """
-    best: Optional[Extremum] = None
+    best: Extremum | None = None
     for s in clip(samples, window):
         if best is None or s.v < best.value:
             best = Extremum(s.v, s.t)
@@ -286,12 +287,12 @@ def min_(samples: Sequence[Sample], window: Optional[Window] = None) -> Extremum
     return best
 
 
-def peak_to_peak(samples: Sequence[Sample], window: Optional[Window] = None) -> float:
+def peak_to_peak(samples: Sequence[Sample], window: Window | None = None) -> float:
     """``PP``: peak-to-peak amplitude, ``max(v) - min(v)``. Ported from ``scalar.rs``."""
     return max_(samples, window).value - min_(samples, window).value
 
 
-def peak(samples: Sequence[Sample], window: Optional[Window] = None) -> float:
+def peak(samples: Sequence[Sample], window: Window | None = None) -> float:
     """The largest absolute excursion, ``max(|v|)`` -- the usual meaning of "peak" for a
     bipolar waveform, where ``MAX`` alone would report only the positive extreme.
 
@@ -304,11 +305,11 @@ def peak(samples: Sequence[Sample], window: Optional[Window] = None) -> float:
 
 def _trapezoid(samples: Sequence[Sample]) -> float:
     return math.fsum(
-        0.5 * (a.v + b.v) * (b.t - a.t) for a, b in zip(samples, samples[1:])
+        0.5 * (a.v + b.v) * (b.t - a.t) for a, b in pairwise(samples)
     )
 
 
-def integ(samples: Sequence[Sample], window: Optional[Window] = None) -> float:
+def integ(samples: Sequence[Sample], window: Window | None = None) -> float:
     """``INTEG``: the definite integral of v dt over ``window``, by the trapezoidal rule.
 
     Exact for piecewise-linear data, and correct under variable time steps because each
@@ -317,7 +318,7 @@ def integ(samples: Sequence[Sample], window: Optional[Window] = None) -> float:
     return _trapezoid(clip(samples, window))
 
 
-def avg(samples: Sequence[Sample], window: Optional[Window] = None) -> float:
+def avg(samples: Sequence[Sample], window: Window | None = None) -> float:
     """``AVG``: the dt-weighted mean, i.e. ``integ / duration``.
 
     Never a plain arithmetic mean of sample values, which would misweight irregular spacing.
@@ -331,7 +332,7 @@ def avg(samples: Sequence[Sample], window: Optional[Window] = None) -> float:
 mean = avg
 
 
-def rms(samples: Sequence[Sample], window: Optional[Window] = None) -> float:
+def rms(samples: Sequence[Sample], window: Window | None = None) -> float:
     """``RMS``: the dt-weighted root-mean-square over ``window``.
 
     Because v is linear within each segment, v^2 is quadratic there and its exact integral is
@@ -343,7 +344,7 @@ def rms(samples: Sequence[Sample], window: Optional[Window] = None) -> float:
     duration = clipped[-1].t - clipped[0].t
     integral_v2 = math.fsum(
         (b.t - a.t) / 3.0 * (a.v * a.v + a.v * b.v + b.v * b.v)
-        for a, b in zip(clipped, clipped[1:])
+        for a, b in pairwise(clipped)
     )
     return math.sqrt(integral_v2 / duration)
 
@@ -371,11 +372,11 @@ class Occurrence:
 
     __slots__ = ("n",)
 
-    def __init__(self, n: Optional[int]) -> None:
+    def __init__(self, n: int | None) -> None:
         self.n = n
 
     @classmethod
-    def nth(cls, n: int) -> "Occurrence":
+    def nth(cls, n: int) -> Occurrence:
         return cls(n)
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
@@ -389,7 +390,7 @@ Occurrence.FIRST = Occurrence(1)  # type: ignore[attr-defined]
 #: The right-hand side of a ``WHEN <var> = <value>|<var2>`` clause: either a fixed level, or
 #: another series whose difference with the first is watched for a sign change. Ported from
 #: ``crossing.rs``'s ``Threshold`` enum.
-Threshold = Union[float, Sequence[Sample]]
+Threshold = float | Sequence[Sample]
 
 
 def find_at(samples: Sequence[Sample], t: float) -> float:
@@ -491,7 +492,7 @@ def _find_crossings(diff: Sequence[Sample]) -> list[_CrossingEvent]:
     falling if ``current <= 0 and previous > 0``.
     """
     out: list[_CrossingEvent] = []
-    for a, b in zip(diff, diff[1:]):
+    for a, b in pairwise(diff):
         d0, d1 = a.v, b.v
         if d0 == 0.0 and d1 == 0.0:
             continue
@@ -525,9 +526,9 @@ def _select_crossing(
 def when(
     var: Sequence[Sample],
     threshold: Threshold,
-    window: Optional[Window] = None,
+    window: Window | None = None,
     edge: Edge = Edge.EITHER,
-    occurrence: Optional[Occurrence] = None,
+    occurrence: Occurrence | None = None,
 ) -> float:
     """``WHEN <var> = <value>|<var2>``: the *time* at which ``var`` crosses ``threshold``.
 
@@ -542,9 +543,9 @@ def find_when(
     find_var: Sequence[Sample],
     when_var: Sequence[Sample],
     threshold: Threshold,
-    window: Optional[Window] = None,
+    window: Window | None = None,
     edge: Edge = Edge.EITHER,
-    occurrence: Optional[Occurrence] = None,
+    occurrence: Occurrence | None = None,
 ) -> float:
     """``FIND <a> WHEN <b> = <value>``: the value of ``find_var`` when ``when_var`` crosses.
 
@@ -561,9 +562,9 @@ def deriv_when(
     variable: Sequence[Sample],
     when_var: Sequence[Sample],
     threshold: Threshold,
-    window: Optional[Window] = None,
+    window: Window | None = None,
     edge: Edge = Edge.EITHER,
-    occurrence: Optional[Occurrence] = None,
+    occurrence: Occurrence | None = None,
 ) -> float:
     """``DERIV <a> WHEN <b> = <value>``. Ported from ``crossing.rs``'s ``deriv_when``."""
     t = when(when_var, threshold, window, edge, occurrence)
@@ -584,16 +585,16 @@ class EventSpec:
       known in advance.
     """
 
-    time: Optional[float] = None
-    var: Optional[Sequence[Sample]] = None
-    threshold: Optional[Threshold] = None
-    frac: Optional[float] = None
-    window: Optional[Window] = None
+    time: float | None = None
+    var: Sequence[Sample] | None = None
+    threshold: Threshold | None = None
+    frac: float | None = None
+    window: Window | None = None
     edge: Edge = Edge.EITHER
-    occurrence: Optional[Occurrence] = None
+    occurrence: Occurrence | None = None
 
     @classmethod
-    def at(cls, time: float) -> "EventSpec":
+    def at(cls, time: float) -> EventSpec:
         return cls(time=time)
 
     @classmethod
@@ -601,10 +602,10 @@ class EventSpec:
         cls,
         var: Sequence[Sample],
         threshold: Threshold,
-        window: Optional[Window] = None,
+        window: Window | None = None,
         edge: Edge = Edge.EITHER,
-        occurrence: Optional[Occurrence] = None,
-    ) -> "EventSpec":
+        occurrence: Occurrence | None = None,
+    ) -> EventSpec:
         return cls(
             var=var,
             threshold=threshold,
@@ -618,10 +619,10 @@ class EventSpec:
         cls,
         var: Sequence[Sample],
         frac: float,
-        window: Optional[Window] = None,
+        window: Window | None = None,
         edge: Edge = Edge.EITHER,
-        occurrence: Optional[Occurrence] = None,
-    ) -> "EventSpec":
+        occurrence: Occurrence | None = None,
+    ) -> EventSpec:
         return cls(
             var=var, frac=frac, window=window, edge=edge, occurrence=occurrence
         )
@@ -677,7 +678,7 @@ def _walk(samples: Sequence[Sample], on: float, off: float) -> _CycleWalk:
     if state == "on":
         on_crossings.append(samples[0].t)
 
-    for a, b in zip(samples, samples[1:]):
+    for a, b in pairwise(samples):
         if state != "on" and b.v >= on and a.v < on:
             t = a.t + (on - a.v) * (b.t - a.t) / (b.v - a.v)
             if state == "off":
@@ -715,7 +716,7 @@ def _sum_intervals_clipped(
 
 def freq(
     samples: Sequence[Sample],
-    window: Optional[Window] = None,
+    window: Window | None = None,
     on: float = 0.0,
     off: float = 0.0,
 ) -> float:
@@ -736,7 +737,7 @@ def freq(
 
 def on_time(
     samples: Sequence[Sample],
-    window: Optional[Window] = None,
+    window: Window | None = None,
     on: float = 0.0,
     off: float = 0.0,
 ) -> float:
@@ -752,7 +753,7 @@ def on_time(
 
 def off_time(
     samples: Sequence[Sample],
-    window: Optional[Window] = None,
+    window: Window | None = None,
     on: float = 0.0,
     off: float = 0.0,
 ) -> float:
@@ -767,7 +768,7 @@ def off_time(
 
 def duty_cycle(
     samples: Sequence[Sample],
-    window: Optional[Window] = None,
+    window: Window | None = None,
     on: float = 0.0,
     off: float = 0.0,
 ) -> float:
@@ -859,7 +860,7 @@ def four(
     samples: Sequence[Sample],
     fundamental_freq: float,
     num_harmonics: int = 10,
-    window: Optional[Window] = None,
+    window: Window | None = None,
 ) -> FourierResult:
     """``FOUR``: bounded-harmonic Fourier analysis at ``fundamental_freq`` (Hz).
 
@@ -882,7 +883,7 @@ def four(
 
     clipped = clip(samples, window)
     duration = clipped[-1].t - clipped[0].t
-    pairs = list(zip(clipped, clipped[1:]))
+    pairs = list(pairwise(clipped))
 
     harmonics: list[Harmonic] = []
     for n in range(num_harmonics):
@@ -918,7 +919,7 @@ def thd(
     samples: Sequence[Sample],
     fundamental_freq: float,
     num_harmonics: int = 10,
-    window: Optional[Window] = None,
+    window: Window | None = None,
 ) -> float:
     """Total harmonic distortion as a percentage -- :func:`four`'s ``thd_percent``.
 
@@ -1073,7 +1074,7 @@ def product(a: Sequence[Sample], b: Sequence[Sample]) -> list[Sample]:
 def average_power(
     voltage: Sequence[Sample],
     current: Sequence[Sample],
-    window: Optional[Window] = None,
+    window: Window | None = None,
 ) -> float:
     """Real (average) power, the dt-weighted mean of the instantaneous product ``v * i``.
 
@@ -1091,7 +1092,7 @@ def average_power(
 def rms_power(
     voltage: Sequence[Sample],
     current: Sequence[Sample],
-    window: Optional[Window] = None,
+    window: Window | None = None,
 ) -> float:
     """Apparent power, ``rms(v) * rms(i)``.
 
