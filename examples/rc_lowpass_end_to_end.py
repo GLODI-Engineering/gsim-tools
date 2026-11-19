@@ -5,7 +5,8 @@ Every stage is real -- no mocks, no fixtures, no pre-recorded output:
 1. **Build** an RC low-pass with :mod:`gsim_tools.schematic`, which calls into ``gsim_py``,
    which calls into ``gsim-core``, for every document operation.
 2. **Compile** it to a ``general-simulator`` netlist through the same path.
-3. **Run** the real ``general-simulator`` binary on it via :func:`gsim_tools.results.run_netlist_text`.
+3. **Run** the real ``general-simulator`` binary on it, via
+   :func:`gsim_tools.results.run_netlist_text`.
 4. **Read** the CSV back with :mod:`gsim_tools.results` and **measure** it with
    :mod:`gsim_tools.measure`.
 5. **Assert** each measurement against (a) the closed-form analytic answer for a first-order
@@ -180,7 +181,7 @@ def main() -> int:
     )
     v_r = [
         measure.Sample(a.t, a.v - b.v)
-        for a, b in zip(run.trace.samples("V(in)"), out)
+        for a, b in zip(run.trace.samples("V(in)"), out, strict=True)
     ]
     i_r = [measure.Sample(s.t, -s.v) for s in current]  # into the resistor, not into Vin
     ok &= check(

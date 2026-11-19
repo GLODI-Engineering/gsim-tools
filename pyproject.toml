@@ -70,6 +70,7 @@ sidecar = [
 schematic = []
 dev = [
     "pytest>=8.0",
+    "ruff>=0.14",
 ]
 
 [build-system]
@@ -85,3 +86,25 @@ markers = [
     "gsim_py: requires the gsim_py extension module (built from gsim-core via maturin)",
     "simulator: requires the general-simulator binary on PATH or at $GSIM_SIMULATOR",
 ]
+
+[tool.ruff]
+# The package supports 3.11+ (`requires-python`), and the code is written to 100 columns:
+# at ruff's default 88 this tree reports 480 long lines, at 100 it reports three.
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+# Explicit, so the gate means one thing from one ruff release to the next. pycodestyle +
+# pyflakes are the floor; isort keeps import blocks stable across contributors; pyupgrade and
+# flake8-bugbear are the two that catch real defects rather than style (a mutable default, a
+# loop variable captured by a closure); ruff's own rules catch what the others miss.
+select = ["E", "W", "F", "I", "UP", "B", "RUF"]
+# `__all__` and `__slots__` are grouped here by concept -- types, then errors, then functions --
+# which is information an alphabetical sort would throw away. RUF022/RUF023 want them sorted.
+ignore = ["RUF022", "RUF023"]
+
+# `ruff format` is deliberately NOT a gate. It would reformat 9 of the 16 files (~190 changed
+# lines) in a tree that is hand-wrapped to carry meaning -- argument lists broken where the
+# argument groups are, tables aligned to be read as tables. That is a separate decision with a
+# separate diff, not something to smuggle in with a lint configuration. `ruff check` covers the
+# rules that catch defects; formatting stays the author's.

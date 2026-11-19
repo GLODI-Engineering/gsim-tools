@@ -1,0 +1,10 @@
+# Packages of venv 'gsim-tools/.venv' (Python 3.12), frozen on 2026-11-19 before the venv was deleted.
+# Recreate: python3.12 -m venv .venv && .venv/bin/pip install -r requirements-venv-freeze.txt
+# editable local install removed: gsim-py
+# editable local install removed: gsim-tools
+iniconfig==2.3.1
+maturin==1.16.0
+packaging==26.3
+pluggy==1.7.0
+pygments==2.21.0
+pytest==9.2.0

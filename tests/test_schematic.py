@@ -21,6 +21,7 @@ import pytest
 
 from gsim_tools import schematic as S
 
+
 def has_gsim_py() -> bool:
     try:
         import gsim_py  # noqa: F401
@@ -145,7 +146,10 @@ def test_endpoint_coercion_accepts_tuples_and_endpoints():
 @pytest.mark.parametrize(
     ("message", "cls"),
     [
-        ("cross-paradigm: a signal wire cannot join a physical-electrical one", S.CrossParadigmError),
+        (
+            "cross-paradigm: a signal wire cannot join a physical-electrical one",
+            S.CrossParadigmError,
+        ),
         ("port-kind-mismatch: port 'in' is signal, port 'p1' is physical-electrical",
          S.PortKindMismatchError),
         ("port-dim-mismatch: [3] vs [1]", S.PortDimMismatchError),
@@ -282,7 +286,7 @@ def test_a_mistyped_port_name_surfaces_at_compile_as_a_floating_port():
     sch.connect(r1.typo_port, gnd.p)  # accepted here...
     sch.connect(vin.n, gnd.p)
 
-    with pytest.raises(S.FloatingPortError, match="R1.p2"):  # ...caught here
+    with pytest.raises(S.FloatingPortError, match=r"R1\.p2"):  # ...caught here
         sch.compile()
 
 

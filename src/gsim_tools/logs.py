@@ -33,7 +33,6 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
 
 __all__ = [
     "ErrorKind",
@@ -95,7 +94,7 @@ class SimulatorError:
 
     kind: ErrorKind
     message: str
-    line: Optional[int] = None
+    line: int | None = None
     fields: dict[str, str] = field(default_factory=dict)
 
     def __str__(self) -> str:
@@ -206,7 +205,7 @@ def parse_stderr(stderr: str) -> list[SimulatorError]:
     appended to that message rather than being reported as separate errors.
     """
     errors: list[SimulatorError] = []
-    pending: Optional[list[str]] = None
+    pending: list[str] | None = None
 
     def flush() -> None:
         if pending:

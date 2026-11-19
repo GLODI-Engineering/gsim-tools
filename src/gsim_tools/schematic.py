@@ -51,8 +51,9 @@ anywhere on the system.
 from __future__ import annotations
 
 import json
+from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass
-from typing import Any, Collection, Iterable, Optional, Sequence, Union
+from typing import Any, Union
 
 __all__ = [
     "Schematic",
@@ -106,9 +107,9 @@ class SchematicError(Exception):
     truncates what the Rust error said.
     """
 
-    keyword: Optional[str] = None
+    keyword: str | None = None
 
-    def __init__(self, message: str, keyword: Optional[str] = None) -> None:
+    def __init__(self, message: str, keyword: str | None = None) -> None:
         super().__init__(message)
         self.message = message
         if keyword is not None:
@@ -271,7 +272,7 @@ _ERROR_CLASSES: dict[str, type[SchematicError]] = {
 }
 
 
-def _raise_typed(exc: Exception) -> "SchematicError":
+def _raise_typed(exc: Exception) -> SchematicError:
     """Translate a ``gsim_py`` ``ValueError`` into the matching typed exception.
 
     ``gsim_py`` formats every builder/compiler failure as ``"<keyword>: <real message>"``
@@ -316,7 +317,7 @@ def _gsim_py() -> Any:
     a machine with no Rust toolchain, and neither must importing :mod:`gsim_tools` itself.
     """
     try:
-        import gsim_py  # noqa: PLC0415 - optional dependency, imported lazily on purpose
+        import gsim_py
     except ImportError as exc:
         raise GsimPyNotAvailable(_GSIM_PY_HELP) from exc
     return gsim_py
@@ -372,7 +373,7 @@ _PARADIGM_BY_TYPE: dict[str, str] = {
 }
 
 
-def infer_paradigm(type_: str) -> Optional[str]:
+def infer_paradigm(type_: str) -> str | None:
     """The default paradigm for a block ``type``, or ``None`` if there is no safe default.
 
     A convenience so ordinary scripts need not repeat ``paradigm="physical-network"`` on every
@@ -412,7 +413,7 @@ _BRIDGING_PARADIGMS = frozenset(
 #: ``gsim_py`` functions treat an unknown block as zero-sized, which collapses a whole column
 #: onto one point; a generous rectangle (roomier than the catalogue's ~40-80 unit symbols, so
 #: that a long authored name has somewhere to go) is the useful default instead.
-DEFAULT_BLOCK_SIZE: "tuple[int, int]" = (100, 80)
+DEFAULT_BLOCK_SIZE: tuple[int, int] = (100, 80)
 
 
 # ---------------------------------------------------------------------------
@@ -467,9 +468,9 @@ class Block:
     guess made here.
     """
 
-    __slots__ = ("id", "type", "paradigm", "_schematic")
+    __slots__ = ("_schematic", "id", "paradigm", "type")
 
-    def __init__(self, schematic: "Schematic", block_id: str, type_: str, paradigm: str):
+    def __init__(self, schematic: Schematic, block_id: str, type_: str, paradigm: str):
         self.id = block_id
         self.type = type_
         self.paradigm = paradigm
@@ -487,7 +488,7 @@ class Block:
             raise AttributeError(name)
         return Endpoint(self.id, name)
 
-    def set(self, **params: Any) -> "Block":
+    def set(self, **params: Any) -> Block:
         """Set one or more parameters on this block, in place. Returns ``self`` for chaining."""
         for name, value in params.items():
             self._schematic.set_param(self.id, name, value)
@@ -527,7 +528,7 @@ class CompileResult:
 
     def write(self, path: Any) -> None:
         """Write the netlist text to ``path``."""
-        import pathlib  # noqa: PLC0415 - only needed on this path
+        import pathlib
 
         pathlib.Path(path).write_text(self.netlist)
 
@@ -555,10 +556,10 @@ class Schematic:
     def __init__(
         self,
         id: str,
-        name: Optional[str] = None,
+        name: str | None = None,
         grid: int = 10,
         *,
-        contracts: Optional[dict[str, Any]] = None,
+        contracts: dict[str, Any] | None = None,
     ) -> None:
         """Create an empty schematic.
 
@@ -580,7 +581,7 @@ class Schematic:
 
     # -- context manager (scoping sugar only) --------------------------------
 
-    def __enter__(self) -> "Schematic":
+    def __enter__(self) -> Schematic:
         return self
 
     def __exit__(self, *exc: Any) -> None:
@@ -612,7 +613,7 @@ class Schematic:
         self._model = model_json
 
     @property
-    def blocks(self) -> "dict[str, Block]":
+    def blocks(self) -> dict[str, Block]:
         """Blocks added through this object, by id."""
         return dict(self._blocks)
 
@@ -645,18 +646,18 @@ class Schematic:
         self,
         type: str,
         *,
-        id: Optional[str] = None,
-        at: "tuple[int, int]" = (0, 0),
-        paradigm: Optional[str] = None,
+        id: str | None = None,
+        at: tuple[int, int] = (0, 0),
+        paradigm: str | None = None,
         domain: str = "electrical",
         rotation: int = 0,
-        mirror: Optional[str] = None,
-        fidelity: Optional[str] = None,
-        label: Optional[str] = None,
-        ic: Optional[dict[str, Any]] = None,
-        comment_before: Optional[Union[str, Sequence[str]]] = None,
-        comment_after: Optional[Union[str, Sequence[str]]] = None,
-        params: Optional[dict[str, Any]] = None,
+        mirror: str | None = None,
+        fidelity: str | None = None,
+        label: str | None = None,
+        ic: dict[str, Any] | None = None,
+        comment_before: str | Sequence[str] | None = None,
+        comment_after: str | Sequence[str] | None = None,
+        params: dict[str, Any] | None = None,
         **param_kwargs: Any,
     ) -> Block:
         """Add a block and return it.
@@ -734,13 +735,13 @@ class Schematic:
         self,
         from_: EndpointLike,
         to: EndpointLike,
-        kind: Optional[str] = None,
+        kind: str | None = None,
         *,
-        id: Optional[str] = None,
-        net: Optional[str] = None,
-        label: Optional[str] = None,
-        pinned: Optional[bool] = None,
-        waypoints: Optional[Sequence[Sequence[int]]] = None,
+        id: str | None = None,
+        net: str | None = None,
+        label: str | None = None,
+        pinned: bool | None = None,
+        waypoints: Sequence[Sequence[int]] | None = None,
     ) -> Wire:
         """Wire two endpoints together and return the resulting :class:`Wire`.
 
@@ -792,7 +793,7 @@ class Schematic:
         return wire
 
     def connect_all(
-        self, pairs: Iterable["tuple[EndpointLike, EndpointLike]"], kind: Optional[str] = None
+        self, pairs: Iterable[tuple[EndpointLike, EndpointLike]], kind: str | None = None
     ) -> list[Wire]:
         """Make several wires in one call. Sugar over :meth:`connect`, same semantics."""
         return [self.connect(a, b, kind) for a, b in pairs]
@@ -840,7 +841,7 @@ class Schematic:
             "or pass kind= explicitly if that is really what you mean"
         )
 
-    def set_param(self, block_id: str, name: str, value: Any) -> "Schematic":
+    def set_param(self, block_id: str, name: str, value: Any) -> Schematic:
         """Set one parameter on one block. Returns ``self`` for chaining."""
         gsim_py = _gsim_py()
         try:
@@ -851,7 +852,7 @@ class Schematic:
             raise _raise_typed(exc) from exc
         return self
 
-    def add_param(self, name: str, value: Any) -> "Schematic":
+    def add_param(self, name: str, value: Any) -> Schematic:
         """Add a model-level (schematic-wide) parameter. Returns ``self`` for chaining."""
         gsim_py = _gsim_py()
         try:
@@ -860,7 +861,7 @@ class Schematic:
             raise _raise_typed(exc) from exc
         return self
 
-    def remove(self, block_id: str) -> "Schematic":
+    def remove(self, block_id: str) -> Schematic:
         """Remove a block, cascading to every wire touching it. Returns ``self``."""
         gsim_py = _gsim_py()
         self._model = gsim_py.remove_block(self._model, block_id)
@@ -892,12 +893,12 @@ class Schematic:
         self,
         def_ref: str,
         *,
-        id: Optional[str] = None,
-        at: "tuple[int, int]" = (0, 0),
+        id: str | None = None,
+        at: tuple[int, int] = (0, 0),
         rotation: int = 0,
-        domain: Optional[str] = None,
-        params: Optional[dict[str, Any]] = None,
-        label: Optional[str] = None,
+        domain: str | None = None,
+        params: dict[str, Any] | None = None,
+        label: str | None = None,
     ) -> Block:
         """Instantiate a ``SubcktDef`` as a top-level block; returns it.
 
@@ -934,10 +935,10 @@ class Schematic:
 
     def auto_arrange(
         self,
-        bboxes: Optional[dict[str, "tuple[int, int]"]] = None,
+        bboxes: dict[str, tuple[int, int]] | None = None,
         column_gap: int = 40,
         row_gap: int = 40,
-    ) -> "Schematic":
+    ) -> Schematic:
         """Rewrite every block's position by ``gsim_py``'s own auto-arrange. Returns ``self``.
 
         ``bboxes`` maps block id to ``(width, height)``; a block missing from the map is
@@ -956,10 +957,10 @@ class Schematic:
 
     def _sized_blocks(
         self,
-        bboxes: Optional[dict[str, "tuple[int, int]"]],
-        default_size: "tuple[int, int]",
-        only: Optional["Collection[str]"] = None,
-    ) -> "list[tuple[str, tuple[int, int]]]":
+        bboxes: dict[str, tuple[int, int]] | None,
+        default_size: tuple[int, int],
+        only: Collection[str] | None = None,
+    ) -> list[tuple[str, tuple[int, int]]]:
         """``(block id, (w, h))`` for every block in the *model*, in document order.
 
         The model is authoritative rather than :attr:`blocks`, so a schematic loaded from disk
@@ -976,7 +977,7 @@ class Schematic:
             if wanted is None or b["id"] in wanted
         ]
 
-    def set_positions(self, positions: "dict[str, tuple[int, int]]") -> "Schematic":
+    def set_positions(self, positions: dict[str, tuple[int, int]]) -> Schematic:
         """Move the named blocks to ``{block id: (x, y)}``. Returns ``self``.
 
         The other half of the compute-nudge-apply workflow: take what
@@ -987,7 +988,7 @@ class Schematic:
         self._apply_positions(positions)
         return self
 
-    def _apply_positions(self, positions: "dict[str, tuple[int, int]]") -> None:
+    def _apply_positions(self, positions: dict[str, tuple[int, int]]) -> None:
         """Write ``positions`` into the held model; blocks not mentioned keep theirs."""
         model = json.loads(self._model)
         for block in model["blocks"]:
@@ -998,18 +999,18 @@ class Schematic:
 
     def layered_layout(
         self,
-        bboxes: Optional[dict[str, "tuple[int, int]"]] = None,
+        bboxes: dict[str, tuple[int, int]] | None = None,
         *,
-        blocks: Optional["Collection[str]"] = None,
-        default_size: "tuple[int, int]" = DEFAULT_BLOCK_SIZE,
+        blocks: Collection[str] | None = None,
+        default_size: tuple[int, int] = DEFAULT_BLOCK_SIZE,
         column_gap: int = 80,
         row_gap: int = 60,
-        grid: Optional[int] = None,
-        edges: Optional["Sequence[tuple[str, str]]"] = None,
-        skip_wires: "Collection[str]" = (),
-        origin: "tuple[int, int]" = (0, 0),
+        grid: int | None = None,
+        edges: Sequence[tuple[str, str]] | None = None,
+        skip_wires: Collection[str] = (),
+        origin: tuple[int, int] = (0, 0),
         apply: bool = True,
-    ) -> "dict[str, tuple[int, int]]":
+    ) -> dict[str, tuple[int, int]]:
         """Lay the schematic out left-to-right by signal-flow depth, and return the positions.
 
         Wraps ``gsim_py.layered_layout``: a longest-path (Sugiyama-style) layering over the
@@ -1085,16 +1086,16 @@ class Schematic:
     def place_without_overlap(
         self,
         block_id: str,
-        at: "tuple[int, int]",
+        at: tuple[int, int],
         *,
-        size: Optional["tuple[int, int]"] = None,
-        bboxes: Optional[dict[str, "tuple[int, int]"]] = None,
-        default_size: "tuple[int, int]" = DEFAULT_BLOCK_SIZE,
+        size: tuple[int, int] | None = None,
+        bboxes: dict[str, tuple[int, int]] | None = None,
+        default_size: tuple[int, int] = DEFAULT_BLOCK_SIZE,
         axis: str = "horizontal",
         margin: int = 20,
-        grid: Optional[int] = None,
+        grid: int | None = None,
         apply: bool = True,
-    ) -> "tuple[int, int]":
+    ) -> tuple[int, int]:
         """Move ``block_id`` to the free spot nearest ``at``, and return that ``(x, y)``.
 
         Wraps ``gsim_py.place_without_overlap``: starting at ``at``, it steps outward in both
@@ -1171,7 +1172,7 @@ class Schematic:
         result = json.loads(raw)
         return CompileResult(result["netlist"], list(result.get("notes", [])))
 
-    def save(self, path: Optional[Any] = None) -> str:
+    def save(self, path: Any | None = None) -> str:
         """Serialize to a full ``.gsim_sch`` document; writes it to ``path`` when given.
 
         Returns the document JSON text either way.
@@ -1179,20 +1180,20 @@ class Schematic:
         gsim_py = _gsim_py()
         document = gsim_py.save_document(self._model)
         if path is not None:
-            import pathlib  # noqa: PLC0415 - only needed on this path
+            import pathlib
 
             pathlib.Path(path).write_text(document)
         return document
 
     @classmethod
-    def load(cls, path_or_json: Any) -> "Schematic":
+    def load(cls, path_or_json: Any) -> Schematic:
         """Load a ``.gsim_sch`` document (a path, or the JSON text itself).
 
         The document is validated and canonically re-serialized by ``gsim_py.load_document``,
         so a malformed or non-v2 document is rejected here rather than surfacing later. Blocks
         loaded this way populate :attr:`blocks`, so wire-kind inference works on them too.
         """
-        import pathlib  # noqa: PLC0415 - only needed on this path
+        import pathlib
 
         gsim_py = _gsim_py()
         text = str(path_or_json)
