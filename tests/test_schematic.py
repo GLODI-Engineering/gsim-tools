@@ -134,13 +134,13 @@ def test_paradigm_inference_matches_the_real_examples(type_, expected):
 
 
 def test_endpoint_coercion_accepts_tuples_and_endpoints():
-    ep = S.Endpoint("R1", "p1")
+    ep = S.Endpoint("R1", "p")
     assert S._as_endpoint(ep) is ep
-    assert S._as_endpoint(("R1", "p1")) == ep
-    assert S._as_endpoint(["R1", "p1"]) == ep
-    assert repr(ep) == "R1.p1"
+    assert S._as_endpoint(("R1", "p")) == ep
+    assert S._as_endpoint(["R1", "p"]) == ep
+    assert repr(ep) == "R1.p"
     with pytest.raises(TypeError, match="Endpoint"):
-        S._as_endpoint("R1.p1")
+        S._as_endpoint("R1.p")
 
 
 @pytest.mark.parametrize(
@@ -150,7 +150,7 @@ def test_endpoint_coercion_accepts_tuples_and_endpoints():
             "cross-paradigm: a signal wire cannot join a physical-electrical one",
             S.CrossParadigmError,
         ),
-        ("port-kind-mismatch: port 'in' is signal, port 'p1' is physical-electrical",
+        ("port-kind-mismatch: port 'in' is signal, port 'p' is physical-electrical",
          S.PortKindMismatchError),
         ("port-dim-mismatch: [3] vs [1]", S.PortDimMismatchError),
         ("port-fan-in-on-signal: 'in' already has a driver", S.PortFanInOnSignalError),
@@ -160,7 +160,7 @@ def test_endpoint_coercion_accepts_tuples_and_endpoints():
         ("unknown-block: R9", S.UnknownBlockError),
         ("invalid-block: bad id pattern", S.InvalidBlockError),
         ("cyclic-subckt-def: a -> b -> a", S.CyclicSubcktDefError),
-        ("floating-port: C1.p2 is unwired", S.FloatingPortError),
+        ("floating-port: C1.n is unwired", S.FloatingPortError),
         ("missing-param: R1 needs 'R'", S.MissingParamError),
         ("unknown-type: mystery.block", S.UnknownTypeError),
         ("unknown-target: spice3f5", S.UnknownTargetError),
@@ -206,10 +206,10 @@ def test_build_and_compile_an_rc_lowpass():
     gnd = sch.add("routing.ground", id="gnd", at=(60, 80))
 
     # Wire kind is inferred -- every one of these is physical-network.
-    w = sch.connect(vin.p, r1.p1, net="in")
+    w = sch.connect(vin.p, r1.p, net="in")
     assert w.kind == "physical-electrical"
-    sch.connect(r1.p2, c1.p1, net="out")
-    sch.connect(c1.p2, gnd.p)
+    sch.connect(r1.n, c1.p, net="out")
+    sch.connect(c1.n, gnd.p)
     sch.connect(vin.n, gnd.p)
 
     assert len(sch.blocks) == 4
@@ -229,8 +229,8 @@ def test_compile_full_returns_notes_and_write_helper(tmp_path):
     r1 = sch.add("passive.resistor", id="R1", R=1000.0)
     gnd = sch.add("routing.ground", id="gnd")
     vin = sch.add("source.voltage.dc", id="Vin", V=1.0)
-    sch.connect(vin.p, r1.p1)
-    sch.connect(r1.p2, gnd.p)
+    sch.connect(vin.p, r1.p)
+    sch.connect(r1.n, gnd.p)
     sch.connect(vin.n, gnd.p)
 
     result = sch.compile_full()
@@ -266,7 +266,7 @@ def test_unknown_block_endpoint_raises_dangling_wire_error():
     sch = S.Schematic("dangle")
     r1 = sch.add("passive.resistor", id="R1", R=1.0)
     with pytest.raises(S.DanglingWireError) as excinfo:
-        sch.connect(r1.p2, ("NO_SUCH_BLOCK", "p"), kind="physical-electrical")
+        sch.connect(r1.n, ("NO_SUCH_BLOCK", "p"), kind="physical-electrical")
     assert excinfo.value.keyword == "dangling"
 
 
@@ -275,18 +275,18 @@ def test_a_mistyped_port_name_surfaces_at_compile_as_a_floating_port():
     """Documents where a port typo actually gets caught, since it is not at connect() time.
 
     gsim_py validates the block id but accepts any port name on a known block, so
-    ``r1.typo_port`` makes a wire to a port that does not exist and leaves the real ``p2``
+    ``r1.typo_port`` makes a wire to a port that does not exist and leaves the real ``n``
     unwired. The compiler is what notices, and it names the port precisely.
     """
     sch = S.Schematic("typo")
     vin = sch.add("source.voltage.dc", id="V1", V=1.0)
     r1 = sch.add("passive.resistor", id="R1", R=1.0)
     gnd = sch.add("routing.ground", id="gnd")
-    sch.connect(vin.p, r1.p1)
+    sch.connect(vin.p, r1.p)
     sch.connect(r1.typo_port, gnd.p)  # accepted here...
     sch.connect(vin.n, gnd.p)
 
-    with pytest.raises(S.FloatingPortError, match=r"R1\.p2"):  # ...caught here
+    with pytest.raises(S.FloatingPortError, match=r"R1\.n"):  # ...caught here
         sch.compile()
 
 
@@ -302,11 +302,11 @@ def test_cross_paradigm_wire_is_rejected_with_its_own_type():
     # Inference refuses to pick a side, because picking one would turn a real modelling
     # mistake into a confusing downstream error.
     with pytest.raises(S.SchematicError, match="different kinds"):
-        sch.connect(k.out, r.p1)
+        sch.connect(k.out, r.p)
 
     # Forcing a kind gets the authoritative rejection from gsim_py itself.
     with pytest.raises(S.CrossParadigmError):
-        sch.connect(k.out, r.p1, kind="signal")
+        sch.connect(k.out, r.p, kind="signal")
 
 
 @requires_gsim_py
@@ -328,11 +328,11 @@ def test_one_known_endpoint_is_enough_to_infer_a_wire_kind():
     sch = S.Schematic("partial")
     vin = sch.add("source.voltage.dc", id="V1", V=1.0)
     r1 = sch.add("passive.resistor", id="R1", R=1.0)
-    w = sch.connect(vin.p, ("R1", "p1"))
+    w = sch.connect(vin.p, ("R1", "p"))
     assert w.kind == "physical-electrical"
 
     with pytest.raises(S.DanglingWireError):
-        sch.connect(r1.p2, ("SOMEWHERE_ELSE", "p"))
+        sch.connect(r1.n, ("SOMEWHERE_ELSE", "p"))
 
 
 def test_no_wire_kind_can_be_inferred_between_two_bridging_blocks():
@@ -353,7 +353,7 @@ def test_set_param_and_add_param_and_remove():
     sch = S.Schematic("mutate")
     r1 = sch.add("passive.resistor", id="R1", R=1000.0)
     gnd = sch.add("routing.ground", id="gnd")
-    sch.connect(r1.p2, gnd.p)
+    sch.connect(r1.n, gnd.p)
 
     r1.set(R=2200.0)
     assert next(b for b in sch.model["blocks"] if b["id"] == "R1")["params"]["R"] == 2200.0
@@ -375,8 +375,8 @@ def test_save_and_load_round_trip(tmp_path):
     vin = sch.add("source.voltage.dc", id="Vin", at=(0, 0), V=5.0)
     r1 = sch.add("passive.resistor", id="R1", at=(60, 0), R=1000.0)
     gnd = sch.add("routing.ground", id="gnd", at=(60, 80))
-    sch.connect(vin.p, r1.p1)
-    sch.connect(r1.p2, gnd.p)
+    sch.connect(vin.p, r1.p)
+    sch.connect(r1.n, gnd.p)
     sch.connect(vin.n, gnd.p)
     original = sch.compile()
 
@@ -404,8 +404,8 @@ def test_comments_reach_the_netlist_as_comment_lines():
         comment_after="tolerance not modeled",
     )
     gnd = sch.add("routing.ground", id="gnd")
-    sch.connect(vin.p, r1.p1)
-    sch.connect(r1.p2, gnd.p)
+    sch.connect(vin.p, r1.p)
+    sch.connect(r1.n, gnd.p)
     sch.connect(vin.n, gnd.p)
 
     lines = sch.compile().splitlines()
@@ -541,8 +541,8 @@ def _mixed_paradigm_sheet():
     rload = sch.add("passive.resistor", id="R", R=10.0)
     e = "physical-electrical"
     sch.connect(vdc.p, sw.d, e)
-    sch.connect(sw.s, rload.p1, e)
-    sch.connect(rload.p2, gnd.p, e)
+    sch.connect(sw.s, rload.p, e)
+    sch.connect(rload.n, gnd.p, e)
     sch.connect(vdc.n, gnd.p, e)
 
     ref = sch.add("source.const", id="ref", value=0.5)

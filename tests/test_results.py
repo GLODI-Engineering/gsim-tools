@@ -122,11 +122,11 @@ SIGNAL_ENTRIES = [
         "domain": "time",
         "dtype": "float32",
         "name": "v(out)",
-        "port_id": "p2",
+        "port_id": "n",
         "quantity": "voltage",
         "shape": [4],
         "unit": "V",
-        "url": "results/sim-1/signals/R1__p2.npy",
+        "url": "results/sim-1/signals/R1__n.npy",
     }
 ]
 
@@ -136,7 +136,7 @@ def test_read_manifest_npy_layout(tmp_path):
     result_dir = tmp_path / "results" / "sim-1"
     (result_dir / "signals").mkdir(parents=True)
     np.save(result_dir / "time.npy", np.array([0.0, 0.1, 0.2, 0.3]))
-    np.save(result_dir / "signals" / "R1__p2.npy", np.array([0.0, 1.0, 2.0, 3.0], dtype="float32"))
+    np.save(result_dir / "signals" / "R1__n.npy", np.array([0.0, 1.0, 2.0, 3.0], dtype="float32"))
     write_manifest(result_dir, SIGNAL_ENTRIES)
 
     trace = results.read_manifest(result_dir)
@@ -168,7 +168,7 @@ def test_read_manifest_hdf5_layout(tmp_path):
         fh.attrs["sim_id"] = "sim-1"
         fh.create_dataset("time", data=np.array([0.0, 0.1, 0.2, 0.3]))
         fh.create_dataset(
-            "signals/R1__p2", data=np.array([0.0, 1.0, 2.0, 3.0], dtype="float32")
+            "signals/R1__n", data=np.array([0.0, 1.0, 2.0, 3.0], dtype="float32")
         )
     write_manifest(result_dir, SIGNAL_ENTRIES)
 

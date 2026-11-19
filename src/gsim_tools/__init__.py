@@ -11,9 +11,9 @@ validate and compile to a netlist, rather than a file you draw by hand.
     r1 = sch.add("passive.resistor", id="R1", at=(60, 0), R=1000.0)
     c1 = sch.add("passive.capacitor", id="C1", at=(120, 0), C=1e-6)
     gnd = sch.add("routing.ground", id="gnd", at=(60, 80))
-    sch.connect(vin.p, r1.p1)
-    sch.connect(r1.p2, c1.p1)
-    sch.connect(c1.p2, gnd.p)
+    sch.connect(vin.p, r1.p)
+    sch.connect(r1.n, c1.p)
+    sch.connect(c1.n, gnd.p)
     sch.connect(vin.n, gnd.p)
 
     netlist = sch.compile()

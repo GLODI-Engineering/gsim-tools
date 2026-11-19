@@ -79,9 +79,9 @@ def build() -> Schematic:
     # `net=` names the node, so the CSV column is V(out) rather than a generated name. Wire
     # kind is inferred: every one of these blocks is physical-network, so every wire is
     # physical-electrical without saying so.
-    sch.connect(vin.p, r1.p1, net="in")
-    sch.connect(r1.p2, c1.p1, net="out")
-    sch.connect(c1.p2, gnd.p)
+    sch.connect(vin.p, r1.p, net="in")
+    sch.connect(r1.n, c1.p, net="out")
+    sch.connect(c1.n, gnd.p)
     sch.connect(vin.n, gnd.p)
     return sch
 
