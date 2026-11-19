@@ -50,6 +50,7 @@ anywhere on the system.
 
 from __future__ import annotations
 
+import functools
 import json
 from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass
@@ -373,6 +374,36 @@ _PARADIGM_BY_TYPE: dict[str, str] = {
 }
 
 
+@functools.lru_cache(maxsize=1)
+def _catalogue_index() -> dict[str, tuple[str, str]]:
+    """``type -> (paradigm, domain)``, read from the engine's own component catalogue.
+
+    The catalogue is the one place that knows what a component *is*; this module's tables
+    below are a fallback for a machine with no ``gsim_py``, not a second opinion. Reading it
+    costs one call and is cached for the process.
+
+    Returns an empty index when ``gsim_py`` is unavailable, so an import-time caller or a
+    paradigm lookup on a toolchain-less machine still works off the tables.
+    """
+    try:
+        import gsim_py
+    except ImportError:  # pragma: no cover - exercised on machines without the extension
+        return {}
+    try:
+        catalogue = json.loads(gsim_py.catalog())
+    except Exception:  # pragma: no cover - a catalogue this old has no paradigm/domain
+        return {}
+    index: dict[str, tuple[str, str]] = {}
+    for entry in catalogue.get("components", []):
+        component = entry.get("component", entry)
+        type_ = component.get("id")
+        paradigm = component.get("paradigm")
+        domain = component.get("domain")
+        if type_ and paradigm and domain:
+            index[type_] = (paradigm, domain)
+    return index
+
+
 def infer_paradigm(type_: str) -> str | None:
     """The default paradigm for a block ``type``, or ``None`` if there is no safe default.
 
@@ -380,7 +411,13 @@ def infer_paradigm(type_: str) -> str | None:
     resistor. It is only ever a default: :meth:`Schematic.add` accepts an explicit
     ``paradigm=`` that always wins, and a type with no inferred paradigm raises a clear error
     asking for one rather than guessing.
+
+    The engine's own catalogue is consulted first and the tables below are the fallback, so a
+    type this module has never heard of still gets the paradigm it declares.
     """
+    from_catalogue = _catalogue_index().get(type_)
+    if from_catalogue is not None:
+        return from_catalogue[0]
     if type_ in _PARADIGM_BY_TYPE:
         return _PARADIGM_BY_TYPE[type_]
     prefix = type_.split(".", 1)[0]
@@ -649,7 +686,7 @@ class Schematic:
         id: str | None = None,
         at: tuple[int, int] = (0, 0),
         paradigm: str | None = None,
-        domain: str = "electrical",
+        domain: str | None = None,
         rotation: int = 0,
         mirror: str | None = None,
         fidelity: str | None = None,
@@ -673,8 +710,11 @@ class Schematic:
         bother at all.
 
         ``id`` is optional; ``gsim_py`` assigns one when it is omitted, and the assigned id is
-        what the returned :class:`Block` carries. ``paradigm`` defaults to
-        :func:`infer_paradigm` on the type.
+        what the returned :class:`Block` carries. ``paradigm`` and ``domain`` both default to
+        what the engine's catalogue declares for the type -- a `signal-flow` block gets
+        ``domain="signal"``, a passive gets ``"physical-electrical"`` -- falling back to
+        :func:`infer_paradigm`'s tables and then to ``"physical-electrical"`` for a type the
+        catalogue does not carry.
 
         ``ic`` is a ``{name: value}`` map of initial conditions (a ``.gsim_sch`` block's ``ic``
         field is a map, not a scalar -- ``ic={"V": 0.0}`` on a capacitor, not ``ic=0.0``).
@@ -688,6 +728,7 @@ class Schematic:
         """
         gsim_py = _gsim_py()
 
+        declared = _catalogue_index().get(type)
         resolved_paradigm = paradigm or infer_paradigm(type)
         if resolved_paradigm is None:
             raise SchematicError(
@@ -696,13 +737,23 @@ class Schematic:
                 "'hierarchy' / 'annotation' / 'spice-subckt' explicitly"
             )
 
+        # The domain is the component's own, not a guess from its paradigm: the catalogue
+        # says `physical-electrical` for a passive and `signal` for a signal-flow block, and a
+        # hard default of "electrical" here made every signal-flow block claim a domain it does
+        # not have. See GLODI-Engineering/gsim-core#15 item 4.
+        resolved_domain = domain or (declared[1] if declared else None)
+        if resolved_domain is None:
+            resolved_domain = (
+                "signal" if resolved_paradigm == "signal-flow" else "physical-electrical"
+            )
+
         merged: dict[str, Any] = dict(param_kwargs)
         merged.update(params or {})
 
         spec: dict[str, Any] = {
             "type": type,
             "paradigm": resolved_paradigm,
-            "domain": domain,
+            "domain": resolved_domain,
             "position": list(at),
             "rotation": rotation,
             "params": merged,
