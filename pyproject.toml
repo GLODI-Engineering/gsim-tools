@@ -43,7 +43,7 @@ Source = "https://github.com/GLODI-Engineering/gsim-tools"
 Issues = "https://github.com/GLODI-Engineering/gsim-tools/issues"
 "The engine" = "https://github.com/GLODI-Engineering/general-simulator"
 "The Rust core (gsim_py)" = "https://github.com/GLODI-Engineering/gsim-core"
-"Schematic editor" = "https://github.com/GLODI-Engineering/general-simulator-gui-for-vscode"
+"Omni Schematics (the editor)" = "https://github.com/GLODI-Engineering/omni-schematics"
 
 [project.optional-dependencies]
 # Reading kernel-sidecar SIMULATE_RESULT manifests (manifest.json + data.h5, or the older
