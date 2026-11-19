@@ -10,16 +10,15 @@ reads both into one :class:`Trace` type that :mod:`gsim_tools.measure` can measu
    :func:`iter_csv_rows`. Ported from ``general-simulator/tests/raw-output-python/_lib.py``'s
    ``parse_csv`` and ``run``/``run_csv_and_raw``.
 
-2. **``kernel-sidecar``'s ``SIMULATE_RESULT`` manifest** -- what ``general-simulator-gui``'s
-   live pipeline writes: a result directory holding ``manifest.json`` plus a single ``data.h5``
+2. **``kernel-sidecar``'s ``SIMULATE_RESULT`` manifest** -- what the schematic editor's live
+   pipeline writes: a result directory holding ``manifest.json`` plus a single ``data.h5``
    (schema_version 2), or, in the pre-BE-52 layout, ``time.npy`` plus one ``.npy`` per signal.
-   Read with :func:`read_manifest`. The manifest shape is taken from
-   ``general-simulator-gui/packages/simulator/src/simulator/postprocess/result_writer.py`` and
-   the HDF5 layout from its ``hdf5_store.py`` (``time`` dataset, ``signals/<block>__<port>``).
+   Read with :func:`read_manifest`. The manifest shape and the HDF5 layout (``time`` dataset,
+   ``signals/<block>__<port>``) are taken from that pipeline's own writer.
 
 These really are two formats from two pipelines, not one format described twice -- see
-``gsim-core/docs/decisions/0003-general-simulator-gui-pipeline-parity.md``. This module invents
-no third format; it just reads both.
+``gsim-core``'s decision record on pipeline parity. This module invents no third format; it just
+reads both.
 
 Dependencies: the CSV half is stdlib-only. The manifest half needs ``numpy`` (and ``h5py`` for
 a ``data.h5``-backed result), which are declared as the optional ``sidecar`` extra and imported

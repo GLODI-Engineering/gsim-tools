@@ -2,7 +2,7 @@
 
 The CSV tests use the fixture traces the real ``general-simulator`` binary produced (see
 ``conftest.py``). The kernel-sidecar manifest tests build a result directory in exactly the
-shape ``general-simulator-gui``'s ``result_writer.py``/``hdf5_store.py`` write, and skip when
+shape the schematic editor's own result writer produces, and skip when
 ``numpy``/``h5py`` are absent -- those are the optional ``sidecar`` extra, and the point of the
 whole package layout is that everything else still works without them.
 """
