@@ -13,6 +13,7 @@ Split in two on purpose:
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import textwrap
@@ -643,3 +644,53 @@ def test_place_without_overlap_rejects_an_unknown_block_and_a_bad_axis():
         sch.place_without_overlap("nope", (0, 0))
     with pytest.raises(S.SchematicError, match="invalid axis"):
         sch.place_without_overlap("a", (0, 0), axis="diagonal")
+
+
+# ---------------------------------------------------------------------------
+# The catalogue decides what a block is, not this module's guess
+# ---------------------------------------------------------------------------
+
+
+@requires_gsim_py
+def test_a_blocks_domain_comes_from_the_catalogue_not_from_a_default():
+    """GLODI-Engineering/gsim-core#15 item 4.
+
+    ``add()`` used to hard-default ``domain="electrical"``, so every signal-flow block claimed
+    a domain it does not have -- and even a passive was wrong, because the catalogue says
+    ``physical-electrical``. The catalogue is the one place that knows what a component is.
+    """
+    sch = S.Schematic("domains")
+    sch.add("signal.step", id="STEP1", before=0.0, after=1.0, t_step=0.02)
+    sch.add("passive.resistor", id="R1", R=1000.0)
+    sch.add("sinks.scope", id="SC1", t_window=10)
+
+    model = json.loads(sch.model_json)
+    by_id = {b["id"]: b for b in model["blocks"]}
+
+    assert by_id["STEP1"]["domain"] == "signal"
+    assert by_id["STEP1"]["paradigm"] == "signal-flow"
+    assert by_id["R1"]["domain"] == "physical-electrical"
+    assert by_id["R1"]["paradigm"] == "physical-network"
+    assert by_id["SC1"]["domain"] == "signal"
+
+
+@requires_gsim_py
+def test_an_explicit_domain_still_wins():
+    sch = S.Schematic("domains")
+    sch.add("passive.resistor", id="R1", R=1000.0, domain="physical-thermal")
+    model = json.loads(sch.model_json)
+    assert model["blocks"][0]["domain"] == "physical-thermal"
+
+
+@requires_gsim_py
+def test_a_type_the_tables_never_knew_gets_its_paradigm_from_the_catalogue():
+    """`signal.step` is in the catalogue and was in none of this module's tables.
+
+    Before the catalogue lookup, `sch.add("signal.step", ...)` raised "no default paradigm
+    known for block type 'signal.step'" and the caller had to pass one.
+    """
+    assert S.infer_paradigm("signal.step") == "signal-flow"
+    sch = S.Schematic("inferred")
+    sch.add("signal.step", id="STEP1", before=0.0, after=1.0, t_step=0.02)
+    model = json.loads(sch.model_json)
+    assert model["blocks"][0]["paradigm"] == "signal-flow"
