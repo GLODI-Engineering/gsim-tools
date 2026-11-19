@@ -19,9 +19,9 @@ model JSON in a :class:`Schematic` object and hands back real Python values::
     c1 = sch.add("passive.capacitor", id="C1", at=(120, 0), C=1e-6)
     gnd = sch.add("routing.ground", id="gnd", at=(60, 80))
 
-    sch.connect(vin.p, r1.p1)
-    sch.connect(r1.p2, c1.p1)
-    sch.connect(c1.p2, gnd.p)
+    sch.connect(vin.p, r1.p)
+    sch.connect(r1.n, c1.p)
+    sch.connect(c1.n, gnd.p)
     sch.connect(vin.n, gnd.p)
 
     netlist = sch.compile()
@@ -425,7 +425,7 @@ DEFAULT_BLOCK_SIZE: tuple[int, int] = (100, 80)
 class Endpoint:
     """One end of a wire: a block id plus a port id.
 
-    Normally obtained as ``block.p1`` or ``block["p1"]`` rather than constructed directly.
+    Normally obtained as ``block.p`` or ``block["p"]`` rather than constructed directly.
     """
 
     block: str
@@ -449,14 +449,14 @@ def _as_endpoint(value: EndpointLike) -> Endpoint:
     if isinstance(value, (tuple, list)) and len(value) == 2:
         return Endpoint(str(value[0]), str(value[1]))
     raise TypeError(
-        f"expected an Endpoint (e.g. r1.p1) or a (block_id, port_id) pair, got {value!r}"
+        f"expected an Endpoint (e.g. r1.p) or a (block_id, port_id) pair, got {value!r}"
     )
 
 
 class Block:
     """A block that has been added to a :class:`Schematic`.
 
-    Access a port by attribute (``r1.p1``) or by item (``r1["p1"]``); both yield an
+    Access a port by attribute (``r1.p``) or by item (``r1["p"]``); both yield an
     :class:`Endpoint`. No port-name validation happens here -- port names are a property of the
     block's GSF contract, which this layer deliberately does not duplicate.
 
@@ -745,7 +745,7 @@ class Schematic:
     ) -> Wire:
         """Wire two endpoints together and return the resulting :class:`Wire`.
 
-        Endpoints may be :class:`Endpoint` objects (``r1.p2``) or ``("R1", "p2")`` pairs.
+        Endpoints may be :class:`Endpoint` objects (``r1.n``) or ``("R1", "n")`` pairs.
 
         ``kind`` defaults to the wire kind implied by the two blocks' paradigms:
         ``physical-electrical`` between two ``physical-network`` blocks, ``signal`` between two
