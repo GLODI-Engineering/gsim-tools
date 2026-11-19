@@ -43,7 +43,7 @@ Source = "https://github.com/GLODI-Engineering/gsim-tools"
 Issues = "https://github.com/GLODI-Engineering/gsim-tools/issues"
 "The engine" = "https://github.com/GLODI-Engineering/general-simulator"
 "The Rust core (gsim_py)" = "https://github.com/GLODI-Engineering/gsim-core"
-"Schematic editor" = "https://github.com/GLODI-Engineering/general-simulator-gui"
+"Schematic editor" = "https://github.com/GLODI-Engineering/general-simulator-gui-for-vscode"
 
 [project.optional-dependencies]
 # Reading kernel-sidecar SIMULATE_RESULT manifests (manifest.json + data.h5, or the older
@@ -53,9 +53,10 @@ sidecar = [
     "h5py>=3.11",
 ]
 # `gsim_tools.schematic` -- the main surface -- needs `gsim_py`, the PyO3 extension built
-# from gsim-core. It is not yet on a package index, so this extra installs nothing and
-# exists to name the requirement; once `gsim-py` publishes wheels this becomes
-# `schematic = ["gsim-py>=0.1"]` and a single `pip install gsim-tools[schematic]` is enough.
+# from gsim-core. It is published on crates.io (0.5.0), but a crates.io release is source and
+# not a wheel, so this extra still installs nothing and exists to name the requirement; once
+# `gsim-py` publishes wheels this becomes `schematic = ["gsim-py>=0.5"]` and a single
+# `pip install gsim-tools[schematic]` is enough.
 #
 # Until then, build it once:
 #
