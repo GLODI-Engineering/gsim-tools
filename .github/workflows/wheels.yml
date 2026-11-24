@@ -1,0 +1,111 @@
+name: wheels
+
+# This package is pure Python with no runtime dependencies, so there is exactly
+# one wheel and it works everywhere. Building it is three lines; the reason it
+# did not exist is that nobody asked for it until a downstream kernel could not
+# be installed without a checkout of this repository (#14).
+#
+# Runs on a tag, and on demand. Not on every push: CI already proves the source
+# works, and nothing downstream consumes an untagged wheel.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wheel:
+    name: Build the wheel, prove it installs, attach it
+    runs-on: ubuntu-latest
+    permissions:
+      # Only to attach assets to the release for this tag. The job pushes to no
+      # index: publishing to PyPI is a decision, not a consequence of tagging.
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          # The floor from `requires-python`. A `py3-none-any` wheel built on the
+          # oldest supported interpreter cannot accidentally depend on a newer one.
+          python-version: "3.11"
+
+      - name: Build the wheel and the sdist
+        run: uv build --out-dir dist
+
+      - name: One wheel, and it is universal
+        run: |
+          ls -la dist
+          # A platform tag here would mean the build picked up something compiled,
+          # which for this package would be a packaging mistake rather than a
+          # feature: the whole point is that it installs without a toolchain.
+          for w in dist/*.whl; do
+            case "$w" in
+              *-py3-none-any.whl) ;;
+              *) echo "::error::$w is not a py3-none-any wheel"; exit 1 ;;
+            esac
+          done
+          test "$(ls -1 dist/*.whl | wc -l)" -eq 1 || {
+            echo "::error::expected exactly one wheel"; exit 1; }
+          test -n "$(ls -1 dist/*.tar.gz 2>/dev/null)" || {
+            echo "::error::no sdist built"; exit 1; }
+
+      # The check that matters. A wheel that builds and cannot be used is worth
+      # nothing, and "it imports" is too weak -- `gsim_tools.schematic` needs
+      # `gsim_py`, so the half of this library that works without a compiler is
+      # the half a bare `pip install` has to deliver. That half is measured here
+      # by running the example written for exactly this case, against the
+      # *installed* wheel: the src layout means there is no `gsim_tools/` at the
+      # repository root to shadow site-packages.
+      - name: A clean virtualenv, the wheel, and no compiler
+        run: |
+          python -m venv /tmp/wheel-only
+          /tmp/wheel-only/bin/python -m pip install --quiet --upgrade pip
+          /tmp/wheel-only/bin/python -m pip install --quiet dist/*.whl
+
+          /tmp/wheel-only/bin/python - <<'PY'
+          import gsim_tools, pathlib
+          from gsim_tools import logs, measure, results
+          print("gsim_tools from", pathlib.Path(gsim_tools.__file__).parent)
+          assert "site-packages" in gsim_tools.__file__, "import resolved to the checkout"
+          PY
+
+          # `gsim_py` must be absent, or this proves nothing about the no-compiler case.
+          if /tmp/wheel-only/bin/python -c "import gsim_py" 2>/dev/null; then
+            echo "::error::gsim_py is installed, so this is not the bare case"; exit 1
+          fi
+
+          /tmp/wheel-only/bin/python examples/measure_a_csv_without_gsim_py.py
+
+      - name: And schematic still fails the way it promises to
+        # The documented contract of the `schematic` extra: every entry point
+        # raises GsimPyNotAvailable with build instructions rather than an
+        # ImportError traceback. A wheel that broke that promise would send the
+        # user looking for a bug in their own code.
+        run: |
+          /tmp/wheel-only/bin/python - <<'PY'
+          from gsim_tools.schematic import GsimPyNotAvailable, Schematic
+          try:
+              Schematic(id="probe")
+          except GsimPyNotAvailable as exc:
+              assert "gsim" in str(exc).lower(), str(exc)
+              print("GsimPyNotAvailable:", str(exc).splitlines()[0])
+          else:
+              raise SystemExit("Schematic() built without gsim_py, which cannot be right")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel
+          path: dist
+
+      - name: Attach to the release for this tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # --clobber so re-running the workflow on an existing tag replaces the
+          # assets instead of failing on a name that is already there.
+          gh release upload "${GITHUB_REF_NAME}" dist/* --clobber --repo "${GITHUB_REPOSITORY}"
